@@ -1,0 +1,13 @@
+{
+  "_id": "prod-1",
+  "name": "Rubber Tapping Knife",
+  "category": "Tools",
+  "description": "Durable stainless steel rubber tapping knife with ergonomic handle.",
+  "price": 450,
+  "discountPrice": 400,
+  "stock": 45,
+  "sku": "RTK-001",
+  "status": "active",
+  "createdAt": "2026-06-20T00:00:00Z",
+  "updatedAt": "2026-06-20T00:00:00Z"
+}

@@ -1,0 +1,24 @@
+{
+  "_id": "cust-1",
+  "role": "customer",
+  "fullName": "Arun Kumar",
+  "mobile": "9876543210",
+  "email": "arun.kumar@example.com",
+  "address": "House 12, Main Road",
+  "village": "Kottayam",
+  "district": "Kottayam",
+  "state": "Kerala",
+  "pinCode": "686001",
+  "bank": {
+    "holder": "Arun Kumar",
+    "accountNumber": "123456789012",
+    "ifsc": "SBIN0005678",
+    "bankName": "State Bank of India",
+    "branch": "Market Road",
+    "city": "Kochi",
+    "state": "Kerala",
+    "verified": true
+  },
+  "createdAt": "2026-06-20T00:00:00Z",
+  "updatedAt": "2026-06-20T00:00:00Z"
+}

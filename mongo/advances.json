@@ -1,0 +1,9 @@
+{
+  "_id": "adv-1",
+  "customerId": "cust-1",
+  "amount": 5000,
+  "balance": 2500,
+  "issuedDate": "2026-06-15",
+  "status": "Active",
+  "notes": "Advance given for rubber tapping materials."
+}

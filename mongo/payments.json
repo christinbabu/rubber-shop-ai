@@ -1,0 +1,11 @@
+{
+  "_id": "pay-1",
+  "customerId": "cust-1",
+  "orderId": "order-1",
+  "transactionId": "txn-1",
+  "amount": 19500,
+  "paymentDate": "2026-06-18T12:00:00Z",
+  "method": "Bank Transfer",
+  "status": "Completed",
+  "notes": "Payment for RSS purchase."
+}

@@ -1,0 +1,445 @@
+import { useMemo, useState } from 'react'
+import './App.css'
+import { initialCustomers, initialOrders, initialProducts, initialTransactions } from './data'
+import type { CartItem, Customer, Product, Role, Transaction } from './types'
+import { createId, todayString } from './utils/helpers'
+
+// Layout Components
+import { TopBar } from './components/layout/TopBar'
+import { Sidebar } from './components/layout/Sidebar'
+import { Header } from './components/layout/Header'
+
+// Auth Components
+import { Login } from './components/auth/Login'
+import { Register } from './components/auth/Register'
+
+// Dashboard Components
+import { AdminDashboard } from './components/dashboard/AdminDashboard'
+import { FinanceDashboard } from './components/dashboard/FinanceDashboard'
+import { CustomerDashboard } from './components/dashboard/CustomerDashboard'
+
+// Feature Components
+import { CustomersList } from './components/features/CustomersList'
+import { AddCustomerForm } from './components/features/AddCustomerForm'
+import { Purchases } from './components/features/Purchases'
+import { Products } from './components/features/Products'
+import { Inventory } from './components/features/Inventory'
+import { Reports } from './components/features/Reports'
+import { Shop } from './components/features/Shop'
+import { Cart } from './components/features/Cart'
+import { Orders } from './components/features/Orders'
+import { Profile } from './components/features/Payments'
+
+
+function App() {
+  // Auth State
+  const [stage, setStage] = useState<'login' | 'register' | 'app'>('login')
+  const [role, setRole] = useState<Role | null>(null)
+  const [user, setUser] = useState<any>(null)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+
+  // Navigation State
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [navPinned, setNavPinned] = useState(false)
+
+  // Data State
+  const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomers[0]?.id ?? '')
+  const [customers, setCustomers] = useState<Customer[]>(initialCustomers)
+  const [products, setProducts] = useState<Product[]>(initialProducts)
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
+  const [orders, setOrders] = useState(initialOrders)
+  const [cart, setCart] = useState<CartItem[]>([])
+
+  // Shop State
+  const [checkoutMethod, setCheckoutMethod] = useState<'Cash on Delivery' | 'Bank Transfer' | 'UPI' | 'Credit/Debit Card'>('Cash on Delivery')
+
+  // Computed Values
+  const activeCustomer = role === 'customer' ? customers.find((customer) => customer.id === selectedCustomerId) : undefined
+
+  const customerTransactions = useMemo(
+    () => transactions.filter((txn) => txn.customerId === selectedCustomerId),
+    [selectedCustomerId, transactions],
+  )
+
+  const customerOrders = useMemo(
+    () => orders.filter((order) => order.customerId === selectedCustomerId),
+    [selectedCustomerId, orders],
+  )
+
+  const ledger = useMemo(() => {
+    const totalQuantity = customerTransactions.reduce((sum, item) => sum + item.quantity, 0)
+    const totalEarnings = customerTransactions.reduce((sum, item) => sum + item.quantity * item.rate - item.deduction, 0)
+    const pendingPayments = customerTransactions.reduce((sum, item) => sum + (item.status === 'Pending' ? item.quantity * item.rate - item.deduction : 0), 0)
+    const lastTransaction = customerTransactions.slice(-1)[0]?.date ?? 'None'
+    return { totalQuantity, totalEarnings, pendingPayments, lastTransaction }
+  }, [customerTransactions])
+
+  const cartItems = useMemo(
+    () =>
+      cart
+        .map((item) => {
+          const product = products.find((productItem) => productItem.id === item.productId)
+          if (!product) return null
+          return {
+            ...item,
+            product,
+            total: item.quantity * product.price,
+          }
+        })
+        .filter(Boolean) as Array<CartItem & { product: Product; total: number }>,
+    [cart, products],
+  )
+
+  const cartTotal = cartItems.reduce((sum, item) => sum + item.total, 0)
+
+  const today = todayString()
+  const todayPurchases = transactions.filter((txn) => txn.date === today).length
+  const todaySales = orders.filter((order) => order.createdAt === today).length
+  const totalCustomers = customers.length
+  const currentStock = products.reduce((sum, product) => sum + product.stock, 0)
+  const totalInventoryValue = products.reduce((sum, product) => sum + product.stock * product.price, 0)
+  const lowStockProducts = products.filter((product) => product.stock < 30)
+  const purchasedQuantity = transactions.reduce((sum, item) => sum + item.quantity, 0)
+  const soldStock = cartItems.reduce((sum, item) => sum + item.quantity, 0)
+
+
+  // Auth Handlers
+  const handleRoleLogin = async (role: Role, email: string, password: string) => {
+    if (!role || !email || !password) {
+      setErrorMessage('Please enter role, email, and password.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          role,
+          email: email.toLowerCase(),
+          password,
+        }),
+      })
+
+      const result = await response.json()
+      if (!result.success) {
+        setErrorMessage(result.message || 'Login failed.')
+        return
+      }
+
+      setRole(result.user.role)
+      setUser(result.user)
+      setActiveTab('dashboard')
+      setStage('app')
+      setErrorMessage('')
+
+      if (result.user.role === 'customer') {
+        const foundCustomer = customers.find((customer) => customer.email.toLowerCase() === result.user.email.toLowerCase())
+        if (foundCustomer) {
+          setSelectedCustomerId(foundCustomer.id)
+        } else {
+          const mappedCustomer: Customer = {
+            id: result.user.id || createId('cust'),
+            fullName: result.user.fullName,
+            mobile: result.user.mobile,
+            email: result.user.email,
+            address: result.user.address,
+            village: result.user.village,
+            district: result.user.district,
+            state: result.user.state,
+            pinCode: result.user.pinCode,
+            bank: {
+              holder: result.user.bank.holder,
+              accountNumber: result.user.bank.accountNumber,
+              ifsc: result.user.bank.ifsc,
+              bankName: result.user.bank.bankName,
+              branch: result.user.bank.branch,
+              city: result.user.bank.city,
+              state: result.user.bank.state,
+              verified: result.user.bank.verified,
+            },
+          }
+          setCustomers((current) => [...current, mappedCustomer])
+          setSelectedCustomerId(mappedCustomer.id)
+        }
+      }
+    } catch (error) {
+      setErrorMessage('Unable to connect to the server.')
+      console.error(error)
+    }
+  }
+
+  const handleRegister = async (customer: Customer) => {
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fullName: customer.fullName,
+          mobile: customer.mobile,
+          email: customer.email.toLowerCase(),
+          password: customer.email,
+          address: customer.address,
+          village: customer.village,
+          district: customer.district,
+          state: customer.state,
+          pinCode: customer.pinCode,
+          bank: {
+            holder: customer.bank.holder,
+            accountNumber: customer.bank.accountNumber,
+            ifsc: customer.bank.ifsc,
+            bankName: customer.bank.bankName,
+            branch: customer.bank.branch,
+            city: customer.bank.city,
+            state: customer.bank.state,
+          },
+        }),
+      })
+
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Registration failed.')
+        return
+      }
+
+      const newCustomer: Customer = {
+        id: result.user.id || customer.id,
+        fullName: result.user.fullName,
+        mobile: result.user.mobile,
+        email: result.user.email,
+        address: result.user.address,
+        village: result.user.village,
+        district: result.user.district,
+        state: result.user.state,
+        pinCode: result.user.pinCode,
+        bank: {
+          holder: result.user.bank.holder,
+          accountNumber: result.user.bank.accountNumber,
+          ifsc: result.user.bank.ifsc,
+          bankName: result.user.bank.bankName,
+          branch: result.user.bank.branch,
+          city: result.user.bank.city,
+          state: result.user.bank.state,
+          verified: result.user.bank.verified || false,
+        },
+      }
+
+      setCustomers((current) => [...current, newCustomer])
+      setSelectedCustomerId(newCustomer.id)
+      setRole('customer')
+      setUser(result.user)
+      setStage('app')
+      setActiveTab('dashboard')
+    } catch (error) {
+      window.alert('Unable to connect to the server.')
+      console.error(error)
+    }
+  }
+
+  const handleLogout = () => {
+    setStage('login')
+    setRole(null)
+    setCart([])
+    setActiveTab('dashboard')
+  }
+
+  // Customer Handlers
+  const handleAddCustomer = (customer: Customer) => {
+    setCustomers((current) => [...current, customer])
+    window.alert('Customer added successfully.')
+  }
+
+  const verifyBank = (customerId: string) => {
+    setCustomers((current) =>
+      current.map((customer) =>
+        customer.id === customerId
+          ? { ...customer, bank: { ...customer.bank, verified: true } }
+          : customer,
+      ),
+    )
+  }
+
+  // Purchase Handlers
+  const handleAddTransaction = (transaction: Transaction) => {
+    setTransactions((current) => [...current, transaction])
+  }
+
+  // Product Handlers
+  const handleAddProduct = (product: Product) => {
+    setProducts((current) => [...current, product])
+  }
+
+  const removeProduct = (productId: string) => {
+    setProducts((current) => current.filter((product) => product.id !== productId))
+  }
+
+  // Shop Handlers
+  const addToCart = (productId: string) => {
+    setCart((current) => {
+      const existing = current.find((item) => item.productId === productId)
+      if (existing) {
+        return current.map((item) =>
+          item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item,
+        )
+      }
+      return [...current, { productId, quantity: 1 }]
+    })
+  }
+
+  const updateCartQuantity = (productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      setCart((current) => current.filter((item) => item.productId !== productId))
+      return
+    }
+    setCart((current) => current.map((item) => (item.productId === productId ? { ...item, quantity } : item)))
+  }
+
+  const handleCheckout = () => {
+    if (!activeCustomer) {
+      window.alert('Customer account is required to checkout.')
+      return
+    }
+    if (!cartItems.length) {
+      window.alert('Your cart is empty.')
+      return
+    }
+
+    const newOrder = {
+      id: createId('order'),
+      customerId: activeCustomer.id,
+      createdAt: todayString(),
+      items: cartItems.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
+      deliveryAddress: `${activeCustomer.address}, ${activeCustomer.village}, ${activeCustomer.district}, ${activeCustomer.state} - ${activeCustomer.pinCode}`,
+      mobile: activeCustomer.mobile,
+      paymentMethod: checkoutMethod,
+      status: 'Pending' as const,
+    }
+
+    setOrders((current) => [...current, newOrder])
+    setProducts((current) =>
+      current.map((product) => {
+        const cartLine = cartItems.find((item) => item.product.id === product.id)
+        if (!cartLine) return product
+        return { ...product, stock: Math.max(0, product.stock - cartLine.quantity) }
+      }),
+    )
+    setCart([])
+    setActiveTab('orders')
+  }
+
+  // Render
+  if (stage === 'login') {
+    return <Login onLogin={handleRoleLogin} onRegisterClick={() => setStage('register')} errorMessage={errorMessage} />
+  }
+
+  if (stage === 'register') {
+    return <Register onRegister={handleRegister} onBackClick={() => setStage('login')} />
+  }
+
+  return (
+    <div className={`app-shell ${theme}-theme`}>
+      <div className="app-layout">
+        <Sidebar role={role} activeTab={activeTab} onTabChange={setActiveTab} navPinned={navPinned} onToggleNav={() => setNavPinned((v) => !v)} />
+        <main className="main-content">
+          <TopBar userFullName={user?.fullName ?? 'Guest'} theme={theme} onThemeToggle={() => setTheme((v) => (v === 'light' ? 'dark' : 'light'))} />
+          <Header role={role} activeCustomer={activeCustomer} onLogout={handleLogout} />
+
+          {/* Dashboard */}
+          {activeTab === 'dashboard' && role === 'admin' && (
+            <AdminDashboard
+              todayPurchases={todayPurchases}
+              todaySales={todaySales}
+              totalCustomers={totalCustomers}
+              currentStock={currentStock}
+              totalInventoryValue={totalInventoryValue}
+              lowStockCount={lowStockProducts.length}
+              onManageCustomers={() => setActiveTab('customers')}
+              onNewPurchase={() => setActiveTab('purchases')}
+              onManageProducts={() => setActiveTab('products')}
+            />
+          )}
+
+          {activeTab === 'dashboard' && role === 'finance' && <FinanceDashboard />}
+
+          {activeTab === 'dashboard' && role === 'customer' && (
+            <CustomerDashboard
+              ledger={ledger}
+              onBrowseShop={() => setActiveTab('shop')}
+              onOrderHistory={() => setActiveTab('orders')}
+            />
+          )}
+
+          {/* Customers */}
+          {activeTab === 'customers' && (
+            <>
+              <CustomersList customers={customers} onVerifyBank={verifyBank} />
+              {role === 'admin' && <AddCustomerForm onAddCustomer={handleAddCustomer} />}
+              <div className="card">
+                <h2>Customer Payments</h2>
+                <p>Payments are visible in the customer portal once a transaction is entered.</p>
+              </div>
+            </>
+          )}
+
+          {/* Purchases */}
+          {activeTab === 'purchases' && (
+            <Purchases customers={customers} transactions={transactions} onAddTransaction={handleAddTransaction} />
+          )}
+
+          {/* Products */}
+          {activeTab === 'products' && (
+            <Products products={products} onAddProduct={handleAddProduct} onRemoveProduct={removeProduct} />
+          )}
+
+          {/* Inventory */}
+          {activeTab === 'inventory' && (
+            <Inventory
+              products={products}
+              purchasedQuantity={purchasedQuantity}
+              currentStock={currentStock}
+              soldStock={soldStock}
+            />
+          )}
+
+          {/* Reports/Finance */}
+          {(activeTab === 'reports' || activeTab === 'finance') && (
+            <Reports
+              customersCount={customers.length}
+              transactionsCount={transactions.length}
+              ordersCount={orders.length}
+              cartItemsCount={cartItems.length}
+            />
+          )}
+
+          {/* Shop */}
+          {activeTab === 'shop' && <Shop products={products} onAddToCart={addToCart} />}
+
+          {/* Cart */}
+          {activeTab === 'cart' && (
+            <Cart
+              cartItems={cartItems}
+              cartTotal={cartTotal}
+              checkoutMethod={checkoutMethod}
+              onUpdateQuantity={updateCartQuantity}
+              onCheckout={handleCheckout}
+              onCheckoutMethodChange={setCheckoutMethod}
+            />
+          )}
+
+          {/* Orders */}
+          {activeTab === 'orders' && <Orders orders={customerOrders} />}
+
+          {/* Profile */}
+          {activeTab === 'profile' && <Profile customer={activeCustomer} />}
+        </main>
+      </div>
+    </div>
+  )
+}
+
+export default App

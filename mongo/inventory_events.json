@@ -1,0 +1,8 @@
+{
+  "_id": "inv-1",
+  "productId": "prod-1",
+  "eventType": "Stock Added",
+  "quantityChange": 45,
+  "eventDate": "2026-06-20T00:00:00Z",
+  "notes": "Initial stock received for rubber tapping knives."
+}

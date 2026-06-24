@@ -1,0 +1,13 @@
+{
+  "_id": "txn-1",
+  "customerId": "cust-1",
+  "purchaseDate": "2026-06-18",
+  "rubberType": "RSS",
+  "quantityKg": 100,
+  "ratePerKg": 200,
+  "deduction": 500,
+  "totalAmount": 20000,
+  "netAmount": 19500,
+  "paymentStatus": "Paid",
+  "createdAt": "2026-06-18T00:00:00Z"
+}
