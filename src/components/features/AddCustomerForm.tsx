@@ -3,7 +3,10 @@ import { createId } from '../../utils/helpers'
 import type { Customer } from '../../types'
 
 interface AddCustomerFormProps {
+  editingCustomer?: Customer | null
   onAddCustomer: (customer: Customer) => void
+  onUpdateCustomer?: (customer: Customer) => void
+  onCancelEdit?: () => void
 }
 
 const emptyForm = {
@@ -24,8 +27,33 @@ const emptyForm = {
   bankState: '',
 }
 
-export function AddCustomerForm({ onAddCustomer }: AddCustomerFormProps) {
+export function AddCustomerForm({ editingCustomer, onAddCustomer, onUpdateCustomer, onCancelEdit }: AddCustomerFormProps) {
   const [form, setForm] = React.useState(emptyForm)
+
+  React.useEffect(() => {
+    if (!editingCustomer) {
+      setForm(emptyForm)
+      return
+    }
+
+    setForm({
+      fullName: editingCustomer.fullName,
+      mobile: editingCustomer.mobile,
+      email: editingCustomer.email,
+      address: editingCustomer.address,
+      village: editingCustomer.village,
+      district: editingCustomer.district,
+      stateName: editingCustomer.state,
+      pinCode: editingCustomer.pinCode,
+      bankHolder: editingCustomer.bank.holder,
+      accountNumber: editingCustomer.bank.accountNumber,
+      ifsc: editingCustomer.bank.ifsc,
+      bankName: editingCustomer.bank.bankName,
+      branch: editingCustomer.bank.branch,
+      city: editingCustomer.bank.city,
+      bankState: editingCustomer.bank.state,
+    })
+  }, [editingCustomer])
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -53,8 +81,8 @@ export function AddCustomerForm({ onAddCustomer }: AddCustomerFormProps) {
       return
     }
 
-    const newCustomer: Customer = {
-      id: createId('cust'),
+    const customerData: Customer = {
+      id: editingCustomer?.id ?? createId('cust'),
       fullName: form.fullName,
       mobile: form.mobile,
       email: form.email,
@@ -71,17 +99,21 @@ export function AddCustomerForm({ onAddCustomer }: AddCustomerFormProps) {
         branch: form.branch,
         city: form.city,
         state: form.bankState,
-        verified: false,
+        verified: editingCustomer?.bank.verified ?? false,
       },
     }
 
-    onAddCustomer(newCustomer)
+    if (editingCustomer && onUpdateCustomer) {
+      onUpdateCustomer(customerData)
+    } else {
+      onAddCustomer(customerData)
+    }
     setForm(emptyForm)
   }
 
   return (
     <div className="card">
-      <h2>Add New Customer</h2>
+      <h2>{editingCustomer ? 'Update Customer' : 'Add New Customer'}</h2>
       <div className="form-grid">
         <label>
           Full Name
@@ -148,8 +180,13 @@ export function AddCustomerForm({ onAddCustomer }: AddCustomerFormProps) {
         </label>
       </div>
       <div className="button-row">
+        {editingCustomer && onCancelEdit && (
+          <button type="button" className="button" onClick={onCancelEdit}>
+            Cancel
+          </button>
+        )}
         <button type="button" className="button button-primary" onClick={handleSubmit}>
-          Add Customer
+          {editingCustomer ? 'Update Customer' : 'Add Customer'}
         </button>
       </div>
     </div>

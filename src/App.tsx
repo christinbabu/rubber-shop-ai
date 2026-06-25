@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { initialCustomers, initialOrders, initialProducts, initialTransactions } from './data'
 import type { CartItem, Customer, Product, Role, Transaction } from './types'
@@ -45,7 +45,46 @@ function App() {
 
   // Data State
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomers[0]?.id ?? '')
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers)
+
+  const mapCustomer = (value: any): Customer => ({
+    id: value.id ?? value._id?.toString() ?? createId('cust'),
+    fullName: value.fullName ?? '',
+    mobile: value.mobile ?? '',
+    email: value.email ?? '',
+    address: value.address ?? '',
+    village: value.village ?? '',
+    district: value.district ?? '',
+    state: value.state ?? '',
+    pinCode: value.pinCode ?? '',
+    bank: {
+      holder: value.bank?.holder ?? '',
+      accountNumber: value.bank?.accountNumber ?? '',
+      ifsc: value.bank?.ifsc ?? '',
+      bankName: value.bank?.bankName ?? '',
+      branch: value.bank?.branch ?? '',
+      city: value.bank?.city ?? '',
+      state: value.bank?.state ?? '',
+      verified: Boolean(value.bank?.verified),
+    },
+  })
+
+  useEffect(() => {
+    const loadCustomers = async () => {
+      try {
+        const response = await fetch('/api/customers')
+        const result = await response.json()
+        if (result.success) {
+          setCustomers(result.customers.map(mapCustomer))
+        }
+      } catch (error) {
+        console.error('Failed to load customers:', error)
+      }
+    }
+
+    loadCustomers()
+  }, [])
   const [products, setProducts] = useState<Product[]>(initialProducts)
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [orders, setOrders] = useState(initialOrders)
@@ -56,6 +95,7 @@ function App() {
 
   // Computed Values
   const activeCustomer = role === 'customer' ? customers.find((customer) => customer.id === selectedCustomerId) : undefined
+  const editingCustomer = customers.find((customer) => customer.id === editingCustomerId) ?? null
 
   const customerTransactions = useMemo(
     () => transactions.filter((txn) => txn.customerId === selectedCustomerId),
@@ -249,9 +289,48 @@ function App() {
   }
 
   // Customer Handlers
-  const handleAddCustomer = (customer: Customer) => {
-    setCustomers((current) => [...current, customer])
-    window.alert('Customer added successfully.')
+  const handleAddCustomer = async (customer: Customer) => {
+    try {
+      const response = await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customer),
+      })
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Failed to add customer.')
+        return
+      }
+
+      setCustomers((current) => [...current, mapCustomer(result.customer)])
+      setEditingCustomerId(null)
+      window.alert('Customer added successfully.')
+    } catch (error) {
+      console.error('Failed to add customer:', error)
+      window.alert('Unable to save customer to the database.')
+    }
+  }
+
+  const handleUpdateCustomer = async (customer: Customer) => {
+    try {
+      const response = await fetch(`/api/customers/${customer.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(customer),
+      })
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Failed to update customer.')
+        return
+      }
+
+      setCustomers((current) => current.map((item) => (item.id === customer.id ? mapCustomer(result.customer) : item)))
+      setEditingCustomerId(null)
+      window.alert('Customer updated successfully.')
+    } catch (error) {
+      console.error('Failed to update customer:', error)
+      window.alert('Unable to update customer in the database.')
+    }
   }
 
   const verifyBank = (customerId: string) => {
@@ -377,8 +456,15 @@ function App() {
           {/* Customers */}
           {activeTab === 'customers' && (
             <>
-              <CustomersList customers={customers} onVerifyBank={verifyBank} />
-              {role === 'admin' && <AddCustomerForm onAddCustomer={handleAddCustomer} />}
+              <CustomersList customers={customers} onVerifyBank={verifyBank} onEditCustomer={setEditingCustomerId} />
+              {role === 'admin' && (
+                <AddCustomerForm
+                  editingCustomer={editingCustomer}
+                  onAddCustomer={handleAddCustomer}
+                  onUpdateCustomer={handleUpdateCustomer}
+                  onCancelEdit={() => setEditingCustomerId(null)}
+                />
+              )}
               <div className="card">
                 <h2>Customer Payments</h2>
                 <p>Payments are visible in the customer portal once a transaction is entered.</p>
@@ -388,7 +474,12 @@ function App() {
 
           {/* Purchases */}
           {activeTab === 'purchases' && (
-            <Purchases customers={customers} transactions={transactions} onAddTransaction={handleAddTransaction} />
+            <Purchases
+              customers={customers}
+              transactions={transactions}
+              onAddTransaction={handleAddTransaction}
+              onAddCustomer={handleAddCustomer}
+            />
           )}
 
           {/* Products */}

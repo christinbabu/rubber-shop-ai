@@ -3,9 +3,10 @@ import type { Customer } from '../../types'
 interface CustomersListProps {
   customers: Customer[]
   onVerifyBank: (customerId: string) => void
+  onEditCustomer: (customerId: string) => void
 }
 
-export function CustomersList({ customers, onVerifyBank }: CustomersListProps) {
+export function CustomersList({ customers, onVerifyBank, onEditCustomer }: CustomersListProps) {
   return (
     <div className="card">
       <div className="card-header">
@@ -32,11 +33,16 @@ export function CustomersList({ customers, onVerifyBank }: CustomersListProps) {
               <td data-label="Village">{customer.village}</td>
               <td data-label="Bank Verified">{customer.bank.verified ? 'Yes' : 'No'}</td>
               <td data-label="Action">
-                {!customer.bank.verified && (
-                  <button type="button" className="button button-small" onClick={() => onVerifyBank(customer.id)}>
-                    Verify Bank
+                <div className="button-row">
+                  <button type="button" className="button button-small" onClick={() => onEditCustomer(customer.id)}>
+                    Update
                   </button>
-                )}
+                  {!customer.bank.verified && (
+                    <button type="button" className="button button-small" onClick={() => onVerifyBank(customer.id)}>
+                      Verify Bank
+                    </button>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

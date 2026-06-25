@@ -6,6 +6,7 @@ interface PurchasesProps {
   customers: Customer[]
   transactions: Transaction[]
   onAddTransaction: (transaction: Transaction) => void
+  onAddCustomer: (customer: Customer) => void
 }
 
 const emptyForm = {
@@ -18,14 +19,11 @@ const emptyForm = {
   status: 'Pending' as const,
 }
 
-export function Purchases({ customers, transactions, onAddTransaction }: PurchasesProps) {
+export function Purchases({ customers, transactions, onAddTransaction, onAddCustomer }: PurchasesProps) {
   const [form, setForm] = useState(emptyForm)
+  const [quickCustomer, setQuickCustomer] = useState({ fullName: '', mobile: '' })
 
   const handleAddTransaction = () => {
-    if (!form.customerId) {
-      window.alert('Please choose a customer.')
-      return
-    }
     const quantity = Number(form.quantity)
     const rate = Number(form.rate)
     if (!quantity || !rate) {
@@ -33,9 +31,43 @@ export function Purchases({ customers, transactions, onAddTransaction }: Purchas
       return
     }
 
+    let customerId = form.customerId
+
+    if (!customerId) {
+      if (!quickCustomer.fullName.trim() || !quickCustomer.mobile.trim()) {
+        window.alert('Choose an existing customer or enter a new customer name and phone number.')
+        return
+      }
+
+      const newCustomer: Customer = {
+        id: createId('cust'),
+        fullName: quickCustomer.fullName.trim(),
+        mobile: quickCustomer.mobile.trim(),
+        email: '',
+        address: '',
+        village: '',
+        district: '',
+        state: '',
+        pinCode: '',
+        bank: {
+          holder: '',
+          accountNumber: '',
+          ifsc: '',
+          bankName: '',
+          branch: '',
+          city: '',
+          state: '',
+          verified: false,
+        },
+      }
+
+      onAddCustomer(newCustomer)
+      customerId = newCustomer.id
+    }
+
     const newTransaction: Transaction = {
       id: createId('txn'),
-      customerId: form.customerId,
+      customerId,
       date: form.date,
       rubberType: form.rubberType,
       quantity,
@@ -45,6 +77,7 @@ export function Purchases({ customers, transactions, onAddTransaction }: Purchas
     }
     onAddTransaction(newTransaction)
     setForm({ ...emptyForm, date: todayString() })
+    setQuickCustomer({ fullName: '', mobile: '' })
   }
 
   return (
@@ -53,7 +86,7 @@ export function Purchases({ customers, transactions, onAddTransaction }: Purchas
         <h2>Add Rubber Purchase Entry</h2>
         <div className="form-grid">
           <label>
-            Customer
+            Existing Customer
             <select value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
               <option value="">Select customer</option>
               {customers.map((customer) => (
@@ -62,6 +95,22 @@ export function Purchases({ customers, transactions, onAddTransaction }: Purchas
                 </option>
               ))}
             </select>
+          </label>
+          <label>
+            New Customer Name
+            <input
+              value={quickCustomer.fullName}
+              onChange={(e) => setQuickCustomer((prev) => ({ ...prev, fullName: e.target.value }))}
+              placeholder="Enter name"
+            />
+          </label>
+          <label>
+            New Customer Phone
+            <input
+              value={quickCustomer.mobile}
+              onChange={(e) => setQuickCustomer((prev) => ({ ...prev, mobile: e.target.value }))}
+              placeholder="Enter phone"
+            />
           </label>
           <label>
             Purchase Date
@@ -91,6 +140,9 @@ export function Purchases({ customers, transactions, onAddTransaction }: Purchas
             </select>
           </label>
         </div>
+        <p className="form-help">
+          Enter a name and phone number to register a customer while saving this purchase. You can add the rest of the details later from the admin customer screen.
+        </p>
         <button type="button" className="button button-primary" onClick={handleAddTransaction}>
           Save Purchase
         </button>
