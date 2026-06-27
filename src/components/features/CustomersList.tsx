@@ -4,9 +4,10 @@ interface CustomersListProps {
   customers: Customer[]
   onVerifyBank: (customerId: string) => void
   onEditCustomer: (customerId: string) => void
+  onCreateCustomer: () => void
 }
 
-export function CustomersList({ customers, onVerifyBank, onEditCustomer }: CustomersListProps) {
+export function CustomersList({ customers, onVerifyBank, onEditCustomer, onCreateCustomer }: CustomersListProps) {
   return (
     <div className="card">
       <div className="card-header">
@@ -14,6 +15,9 @@ export function CustomersList({ customers, onVerifyBank, onEditCustomer }: Custo
           <h2>Customer List</h2>
           <p className="muted">Manage all registered customers and verify bank details.</p>
         </div>
+        <button type="button" className="button button-primary" onClick={onCreateCustomer}>
+          Create Customer
+        </button>
       </div>
       <table>
         <thead>

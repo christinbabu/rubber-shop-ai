@@ -3,6 +3,8 @@ import './App.css'
 import { initialCustomers, initialOrders, initialProducts, initialTransactions } from './data'
 import type { CartItem, Customer, Product, Role, Transaction } from './types'
 import { createId, todayString } from './utils/helpers'
+import { clearAuthSession, readAuthSession, saveAuthSession, AUTH_SESSION_TTL_MS } from './utils/authSession'
+import { mapCustomer } from './utils/customerMapper'
 
 // Layout Components
 import { TopBar } from './components/layout/TopBar'
@@ -30,7 +32,6 @@ import { Cart } from './components/features/Cart'
 import { Orders } from './components/features/Orders'
 import { Profile } from './components/features/Payments'
 
-
 function App() {
   // Auth State
   const [stage, setStage] = useState<'login' | 'register' | 'app'>('login')
@@ -46,29 +47,12 @@ function App() {
   // Data State
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomers[0]?.id ?? '')
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
+  const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers)
-
-  const mapCustomer = (value: any): Customer => ({
-    id: value.id ?? value._id?.toString() ?? createId('cust'),
-    fullName: value.fullName ?? '',
-    mobile: value.mobile ?? '',
-    email: value.email ?? '',
-    address: value.address ?? '',
-    village: value.village ?? '',
-    district: value.district ?? '',
-    state: value.state ?? '',
-    pinCode: value.pinCode ?? '',
-    bank: {
-      holder: value.bank?.holder ?? '',
-      accountNumber: value.bank?.accountNumber ?? '',
-      ifsc: value.bank?.ifsc ?? '',
-      bankName: value.bank?.bankName ?? '',
-      branch: value.bank?.branch ?? '',
-      city: value.bank?.city ?? '',
-      state: value.bank?.state ?? '',
-      verified: Boolean(value.bank?.verified),
-    },
-  })
+  const [products, setProducts] = useState<Product[]>(initialProducts)
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
+  const [orders, setOrders] = useState(initialOrders)
+  const [cart, setCart] = useState<CartItem[]>([])
 
   useEffect(() => {
     const loadCustomers = async () => {
@@ -83,12 +67,18 @@ function App() {
       }
     }
 
+    const restoredSession = readAuthSession()
+    if (restoredSession) {
+      setRole(restoredSession.role)
+      setUser(restoredSession.user)
+      setSelectedCustomerId(restoredSession.selectedCustomerId || initialCustomers[0]?.id || '')
+      setActiveTab(restoredSession.activeTab || 'dashboard')
+      setTheme(restoredSession.theme || 'light')
+      setStage('app')
+    }
+
     loadCustomers()
   }, [])
-  const [products, setProducts] = useState<Product[]>(initialProducts)
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
-  const [orders, setOrders] = useState(initialOrders)
-  const [cart, setCart] = useState<CartItem[]>([])
 
   // Shop State
   const [checkoutMethod, setCheckoutMethod] = useState<'Cash on Delivery' | 'Bank Transfer' | 'UPI' | 'Credit/Debit Card'>('Cash on Delivery')
@@ -170,42 +160,57 @@ function App() {
         return
       }
 
-      setRole(result.user.role)
-      setUser(result.user)
+      const nextRole = result.user.role
+      const nextUser = result.user
+      let nextSelectedCustomerId = selectedCustomerId
+
+      setRole(nextRole)
+      setUser(nextUser)
       setActiveTab('dashboard')
       setStage('app')
       setErrorMessage('')
 
-      if (result.user.role === 'customer') {
-        const foundCustomer = customers.find((customer) => customer.email.toLowerCase() === result.user.email.toLowerCase())
+      if (nextRole === 'customer') {
+        const foundCustomer = customers.find((customer) => customer.email.toLowerCase() === nextUser.email.toLowerCase())
         if (foundCustomer) {
+          nextSelectedCustomerId = foundCustomer.id
           setSelectedCustomerId(foundCustomer.id)
         } else {
           const mappedCustomer: Customer = {
-            id: result.user.id || createId('cust'),
-            fullName: result.user.fullName,
-            mobile: result.user.mobile,
-            email: result.user.email,
-            address: result.user.address,
-            village: result.user.village,
-            district: result.user.district,
-            state: result.user.state,
-            pinCode: result.user.pinCode,
+            id: nextUser.id || createId('cust'),
+            fullName: nextUser.fullName,
+            mobile: nextUser.mobile,
+            email: nextUser.email,
+            address: nextUser.address,
+            village: nextUser.village,
+            district: nextUser.district,
+            state: nextUser.state,
+            pinCode: nextUser.pinCode,
             bank: {
-              holder: result.user.bank.holder,
-              accountNumber: result.user.bank.accountNumber,
-              ifsc: result.user.bank.ifsc,
-              bankName: result.user.bank.bankName,
-              branch: result.user.bank.branch,
-              city: result.user.bank.city,
-              state: result.user.bank.state,
-              verified: result.user.bank.verified,
+              holder: nextUser.bank.holder,
+              accountNumber: nextUser.bank.accountNumber,
+              ifsc: nextUser.bank.ifsc,
+              bankName: nextUser.bank.bankName,
+              branch: nextUser.bank.branch,
+              city: nextUser.bank.city,
+              state: nextUser.bank.state,
+              verified: nextUser.bank.verified,
             },
           }
           setCustomers((current) => [...current, mappedCustomer])
+          nextSelectedCustomerId = mappedCustomer.id
           setSelectedCustomerId(mappedCustomer.id)
         }
       }
+
+      saveAuthSession({
+        role: nextRole,
+        user: nextUser,
+        selectedCustomerId: nextSelectedCustomerId,
+        activeTab: 'dashboard',
+        theme,
+        expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
+      })
     } catch (error) {
       setErrorMessage('Unable to connect to the server.')
       console.error(error)
@@ -275,6 +280,14 @@ function App() {
       setUser(result.user)
       setStage('app')
       setActiveTab('dashboard')
+      saveAuthSession({
+        role: 'customer',
+        user: result.user,
+        selectedCustomerId: newCustomer.id,
+        activeTab: 'dashboard',
+        theme,
+        expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
+      })
     } catch (error) {
       window.alert('Unable to connect to the server.')
       console.error(error)
@@ -282,6 +295,7 @@ function App() {
   }
 
   const handleLogout = () => {
+    clearAuthSession()
     setStage('login')
     setRole(null)
     setCart([])
@@ -304,6 +318,7 @@ function App() {
 
       setCustomers((current) => [...current, mapCustomer(result.customer)])
       setEditingCustomerId(null)
+      setShowCustomerForm(false)
       window.alert('Customer added successfully.')
     } catch (error) {
       console.error('Failed to add customer:', error)
@@ -326,6 +341,7 @@ function App() {
 
       setCustomers((current) => current.map((item) => (item.id === customer.id ? mapCustomer(result.customer) : item)))
       setEditingCustomerId(null)
+      setShowCustomerForm(false)
       window.alert('Customer updated successfully.')
     } catch (error) {
       console.error('Failed to update customer:', error)
@@ -456,13 +472,27 @@ function App() {
           {/* Customers */}
           {activeTab === 'customers' && (
             <>
-              <CustomersList customers={customers} onVerifyBank={verifyBank} onEditCustomer={setEditingCustomerId} />
-              {role === 'admin' && (
+              <CustomersList
+                customers={customers}
+                onVerifyBank={verifyBank}
+                onEditCustomer={(customerId) => {
+                  setEditingCustomerId(customerId)
+                  setShowCustomerForm(true)
+                }}
+                onCreateCustomer={() => {
+                  setEditingCustomerId(null)
+                  setShowCustomerForm(true)
+                }}
+              />
+              {role === 'admin' && (showCustomerForm || editingCustomer) && (
                 <AddCustomerForm
                   editingCustomer={editingCustomer}
                   onAddCustomer={handleAddCustomer}
                   onUpdateCustomer={handleUpdateCustomer}
-                  onCancelEdit={() => setEditingCustomerId(null)}
+                  onCancelEdit={() => {
+                    setEditingCustomerId(null)
+                    setShowCustomerForm(false)
+                  }}
                 />
               )}
               <div className="card">
