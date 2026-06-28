@@ -6,6 +6,7 @@ import type { Product } from '../../types'
 interface ProductsProps {
   products: Product[]
   onAddProduct: (product: Product) => void
+  onUpdateProduct: (product: Product) => void
   onRemoveProduct: (productId: string) => void
 }
 
@@ -20,8 +21,9 @@ const emptyForm = {
   status: 'active' as const,
 }
 
-export function Products({ products, onAddProduct, onRemoveProduct }: ProductsProps) {
+export function Products({ products, onAddProduct, onUpdateProduct, onRemoveProduct }: ProductsProps) {
   const [form, setForm] = useState(emptyForm)
+  const [editingProductId, setEditingProductId] = useState<string | null>(null)
 
   const handleAddProduct = () => {
     if (!form.name || !form.sku || !form.price || !form.stock) {
@@ -29,8 +31,8 @@ export function Products({ products, onAddProduct, onRemoveProduct }: ProductsPr
       return
     }
 
-    const newProduct: Product = {
-      id: createId('prod'),
+    const productData: Product = {
+      id: editingProductId ?? createId('prod'),
       name: form.name,
       category: form.category,
       description: form.description,
@@ -41,7 +43,33 @@ export function Products({ products, onAddProduct, onRemoveProduct }: ProductsPr
       sku: form.sku,
       status: form.status,
     }
-    onAddProduct(newProduct)
+
+    if (editingProductId) {
+      onUpdateProduct(productData)
+      setEditingProductId(null)
+    } else {
+      onAddProduct(productData)
+    }
+
+    setForm(emptyForm)
+  }
+
+  const handleEditProduct = (product: Product) => {
+    setEditingProductId(product.id)
+    setForm({
+      name: product.name,
+      category: product.category,
+      description: product.description,
+      price: String(product.price),
+      discountPrice: product.discountPrice ? String(product.discountPrice) : '',
+      stock: String(product.stock),
+      sku: product.sku,
+      status: product.status,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingProductId(null)
     setForm(emptyForm)
   }
 
@@ -71,7 +99,10 @@ export function Products({ products, onAddProduct, onRemoveProduct }: ProductsPr
                 <td data-label="Status">{product.status}</td>
                 <td data-label="SKU">{product.sku}</td>
                 <td data-label="Action">
-                  <button type="button" className="button button-small" onClick={() => onRemoveProduct(product.id)}>
+                  <button type="button" className="button button-small" onClick={() => handleEditProduct(product)}>
+                    Edit
+                  </button>
+                  <button type="button" className="button button-small button-danger" onClick={() => onRemoveProduct(product.id)}>
                     Delete
                   </button>
                 </td>
@@ -125,9 +156,16 @@ export function Products({ products, onAddProduct, onRemoveProduct }: ProductsPr
             </select>
           </label>
         </div>
-        <button type="button" className="button button-primary" onClick={handleAddProduct}>
-          Add Product
-        </button>
+        <div className="button-row">
+          {editingProductId && (
+            <button type="button" className="button button-secondary" onClick={handleCancelEdit}>
+              Cancel Edit
+            </button>
+          )}
+          <button type="button" className="button button-primary" onClick={handleAddProduct}>
+            {editingProductId ? 'Update Product' : 'Add Product'}
+          </button>
+        </div>
       </div>
     </>
   )

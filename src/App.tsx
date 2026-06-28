@@ -55,15 +55,39 @@ function App() {
   const [cart, setCart] = useState<CartItem[]>([])
 
   useEffect(() => {
-    const loadCustomers = async () => {
+    const loadInitialData = async () => {
       try {
-        const response = await fetch('/api/customers')
-        const result = await response.json()
-        if (result.success) {
-          setCustomers(result.customers.map(mapCustomer))
+        const [customersRes, productsRes, transactionsRes, ordersRes] = await Promise.all([
+          fetch('/api/customers'),
+          fetch('/api/products'),
+          fetch('/api/transactions'),
+          fetch('/api/orders'),
+        ])
+
+        const [customersData, productsData, transactionsData, ordersData] = await Promise.all([
+          customersRes.json(),
+          productsRes.json(),
+          transactionsRes.json(),
+          ordersRes.json(),
+        ])
+
+        if (customersData.success) {
+          setCustomers(customersData.customers.map(mapCustomer))
+        }
+
+        if (productsData.success) {
+          setProducts(productsData.products)
+        }
+
+        if (transactionsData.success) {
+          setTransactions(transactionsData.transactions)
+        }
+
+        if (ordersData.success) {
+          setOrders(ordersData.orders)
         }
       } catch (error) {
-        console.error('Failed to load customers:', error)
+        console.error('Failed to load initial data:', error)
       }
     }
 
@@ -77,7 +101,7 @@ function App() {
       setStage('app')
     }
 
-    loadCustomers()
+    loadInitialData()
   }, [])
 
   // Shop State
@@ -360,17 +384,80 @@ function App() {
   }
 
   // Purchase Handlers
-  const handleAddTransaction = (transaction: Transaction) => {
-    setTransactions((current) => [...current, transaction])
+  const handleAddTransaction = async (transaction: Transaction) => {
+    try {
+      const response = await fetch('/api/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(transaction),
+      })
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Failed to save transaction.')
+        return
+      }
+      setTransactions((current) => [...current, result.transaction])
+    } catch (error) {
+      console.error('Failed to save transaction:', error)
+      window.alert('Unable to save transaction to the database.')
+    }
   }
 
   // Product Handlers
-  const handleAddProduct = (product: Product) => {
-    setProducts((current) => [...current, product])
+  const handleAddProduct = async (product: Product) => {
+    try {
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(product),
+      })
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Failed to add product.')
+        return
+      }
+      setProducts((current) => [...current, result.product])
+    } catch (error) {
+      console.error('Failed to add product:', error)
+      window.alert('Unable to save product in the database.')
+    }
   }
 
-  const removeProduct = (productId: string) => {
-    setProducts((current) => current.filter((product) => product.id !== productId))
+  const removeProduct = async (productId: string) => {
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: 'DELETE',
+      })
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Failed to remove product.')
+        return
+      }
+      setProducts((current) => current.filter((product) => product.id !== productId))
+    } catch (error) {
+      console.error('Failed to remove product:', error)
+      window.alert('Unable to delete product from the database.')
+    }
+  }
+
+  const handleUpdateProduct = async (product: Product) => {
+    try {
+      const response = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(product),
+      })
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Failed to update product.')
+        return
+      }
+      setProducts((current) => current.map((item) => (item.id === product.id ? result.product : item)))
+      window.alert('Product updated successfully.')
+    } catch (error) {
+      console.error('Failed to update product:', error)
+      window.alert('Unable to update product in the database.')
+    }
   }
 
   // Shop Handlers
@@ -394,7 +481,7 @@ function App() {
     setCart((current) => current.map((item) => (item.productId === productId ? { ...item, quantity } : item)))
   }
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (!activeCustomer) {
       window.alert('Customer account is required to checkout.')
       return
@@ -404,8 +491,7 @@ function App() {
       return
     }
 
-    const newOrder = {
-      id: createId('order'),
+    const orderPayload = {
       customerId: activeCustomer.id,
       createdAt: todayString(),
       items: cartItems.map((item) => ({ productId: item.product.id, quantity: item.quantity })),
@@ -415,16 +501,32 @@ function App() {
       status: 'Pending' as const,
     }
 
-    setOrders((current) => [...current, newOrder])
-    setProducts((current) =>
-      current.map((product) => {
-        const cartLine = cartItems.find((item) => item.product.id === product.id)
-        if (!cartLine) return product
-        return { ...product, stock: Math.max(0, product.stock - cartLine.quantity) }
-      }),
-    )
-    setCart([])
-    setActiveTab('orders')
+    try {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderPayload),
+      })
+      const result = await response.json()
+      if (!result.success) {
+        window.alert(result.message || 'Failed to create order.')
+        return
+      }
+
+      setOrders((current) => [...current, result.order])
+      setProducts((current) =>
+        current.map((product) => {
+          const cartLine = cartItems.find((item) => item.product.id === product.id)
+          if (!cartLine) return product
+          return { ...product, stock: Math.max(0, product.stock - cartLine.quantity) }
+        }),
+      )
+      setCart([])
+      setActiveTab('orders')
+    } catch (error) {
+      console.error('Failed to create order:', error)
+      window.alert('Unable to save order to the database.')
+    }
   }
 
   // Render
@@ -455,6 +557,7 @@ function App() {
               lowStockCount={lowStockProducts.length}
               onManageCustomers={() => setActiveTab('customers')}
               onNewPurchase={() => setActiveTab('purchases')}
+              onViewPurchases={() => setActiveTab('purchases')}
               onManageProducts={() => setActiveTab('products')}
             />
           )}
@@ -514,7 +617,7 @@ function App() {
 
           {/* Products */}
           {activeTab === 'products' && (
-            <Products products={products} onAddProduct={handleAddProduct} onRemoveProduct={removeProduct} />
+            <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onRemoveProduct={removeProduct} />
           )}
 
           {/* Inventory */}
@@ -527,15 +630,11 @@ function App() {
             />
           )}
 
-          {/* Reports/Finance */}
-          {(activeTab === 'reports' || activeTab === 'finance') && (
-            <Reports
-              customersCount={customers.length}
-              transactionsCount={transactions.length}
-              ordersCount={orders.length}
-              cartItemsCount={cartItems.length}
-            />
+          {/* Reports */}
+          {activeTab === 'reports' && (
+            <Reports customers={customers} transactions={transactions} />
           )}
+          {activeTab === 'finance' && <Reports customers={customers} transactions={transactions} />}
 
           {/* Shop */}
           {activeTab === 'shop' && <Shop products={products} onAddToCart={addToCart} />}

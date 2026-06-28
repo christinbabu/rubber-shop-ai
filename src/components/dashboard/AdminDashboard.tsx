@@ -9,6 +9,7 @@ interface AdminDashboardProps {
   lowStockCount: number
   onManageCustomers: () => void
   onNewPurchase: () => void
+  onViewPurchases: () => void
   onManageProducts: () => void
 }
 
@@ -21,12 +22,25 @@ export function AdminDashboard({
   lowStockCount,
   onManageCustomers,
   onNewPurchase,
+  onViewPurchases,
   onManageProducts,
 }: AdminDashboardProps) {
   return (
     <>
       <div className="grid grid--3">
-        <div className="card">
+        <div
+          className="card"
+          role="button"
+          tabIndex={0}
+          onClick={onViewPurchases}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              onViewPurchases()
+            }
+          }}
+          style={{ cursor: 'pointer' }}
+        >
           <h3>Today's Purchases</h3>
           <p>{todayPurchases}</p>
         </div>

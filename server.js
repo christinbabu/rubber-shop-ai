@@ -299,6 +299,167 @@ app.put('/api/customers/:id', async (req, res) => {
   return res.json({ success: true, customer: serializeCustomer(updated) })
 })
 
+function serializeProduct(product) {
+  if (!product) return null
+  const { _id, createdAt, updatedAt, ...rest } = product
+  return { id: _id.toString(), ...rest }
+}
+
+function serializeTransaction(transaction) {
+  if (!transaction) return null
+  const { _id, ...rest } = transaction
+  return { id: _id.toString(), ...rest }
+}
+
+function serializeOrder(order) {
+  if (!order) return null
+  const { _id, ...rest } = order
+  return { id: _id.toString(), ...rest }
+}
+
+app.get('/api/products', async (req, res) => {
+  const products = await db.collection('products').find({}).toArray()
+  res.json({ success: true, products: products.map(serializeProduct) })
+})
+
+app.post('/api/products', async (req, res) => {
+  const product = req.body
+  if (!product?.name || product?.price == null || product?.stock == null) {
+    return res.status(400).json({ success: false, message: 'Name, price, and stock are required.' })
+  }
+
+  const doc = {
+    name: product.name,
+    category: product.category || 'Other',
+    description: product.description || '',
+    images: product.images || [],
+    price: Number(product.price),
+    discountPrice: product.discountPrice != null ? Number(product.discountPrice) : undefined,
+    stock: Number(product.stock),
+    sku: product.sku || '',
+    status: product.status || 'active',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const result = await db.collection('products').insertOne(doc)
+  const saved = await db.collection('products').findOne({ _id: result.insertedId })
+  return res.json({ success: true, product: serializeProduct(saved) })
+})
+
+app.put('/api/products/:id', async (req, res) => {
+  const { id } = req.params
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid product id.' })
+  }
+
+  const product = req.body
+  if (!product?.name || product?.price == null || product?.stock == null) {
+    return res.status(400).json({ success: false, message: 'Name, price, and stock are required.' })
+  }
+
+  const update = {
+    name: product.name,
+    category: product.category || 'Other',
+    description: product.description || '',
+    images: product.images || [],
+    price: Number(product.price),
+    discountPrice: product.discountPrice != null ? Number(product.discountPrice) : undefined,
+    stock: Number(product.stock),
+    sku: product.sku || '',
+    status: product.status || 'active',
+    updatedAt: new Date(),
+  }
+
+  const result = await db.collection('products').updateOne({ _id: new ObjectId(id) }, { $set: update })
+  if (result.matchedCount === 0) {
+    return res.status(404).json({ success: false, message: 'Product not found.' })
+  }
+
+  const updated = await db.collection('products').findOne({ _id: new ObjectId(id) })
+  return res.json({ success: true, product: serializeProduct(updated) })
+})
+
+app.delete('/api/products/:id', async (req, res) => {
+  const { id } = req.params
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid product id.' })
+  }
+
+  const result = await db.collection('products').deleteOne({ _id: new ObjectId(id) })
+  if (result.deletedCount === 0) {
+    return res.status(404).json({ success: false, message: 'Product not found.' })
+  }
+
+  return res.json({ success: true })
+})
+
+app.get('/api/transactions', async (req, res) => {
+  const transactions = await db.collection('transactions').find({}).toArray()
+  res.json({ success: true, transactions: transactions.map(serializeTransaction) })
+})
+
+app.post('/api/transactions', async (req, res) => {
+  const transaction = req.body
+  if (!transaction?.customerId || transaction?.quantity == null || transaction?.rate == null || !transaction?.date) {
+    return res.status(400).json({ success: false, message: 'Customer, date, quantity, and rate are required.' })
+  }
+
+  const doc = {
+    customerId: transaction.customerId,
+    date: transaction.date,
+    rubberType: transaction.rubberType || '',
+    quantity: Number(transaction.quantity),
+    rate: Number(transaction.rate),
+    deduction: Number(transaction.deduction || 0),
+    status: transaction.status || 'Pending',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const result = await db.collection('transactions').insertOne(doc)
+  const saved = await db.collection('transactions').findOne({ _id: result.insertedId })
+  return res.json({ success: true, transaction: serializeTransaction(saved) })
+})
+
+app.get('/api/orders', async (req, res) => {
+  const orders = await db.collection('orders').find({}).toArray()
+  res.json({ success: true, orders: orders.map(serializeOrder) })
+})
+
+app.post('/api/orders', async (req, res) => {
+  const order = req.body
+  if (!order?.customerId || !Array.isArray(order.items) || !order?.createdAt) {
+    return res.status(400).json({ success: false, message: 'Customer, items, and createdAt are required.' })
+  }
+
+  const doc = {
+    customerId: order.customerId,
+    createdAt: order.createdAt,
+    items: order.items.map((item) => ({ productId: item.productId, quantity: Number(item.quantity) })),
+    deliveryAddress: order.deliveryAddress || '',
+    mobile: order.mobile || '',
+    paymentMethod: order.paymentMethod || 'Cash on Delivery',
+    status: order.status || 'Pending',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const result = await db.collection('orders').insertOne(doc)
+  const saved = await db.collection('orders').findOne({ _id: result.insertedId })
+
+  if (saved) {
+    for (const item of doc.items) {
+      await db.collection('products').updateOne(
+        { _id: new ObjectId(item.productId) },
+        { $inc: { stock: -item.quantity }, $set: { updatedAt: new Date() } },
+      )
+    }
+  }
+
+  return res.json({ success: true, order: serializeOrder(saved) })
+})
+
 connectDb()
   .then(() => {
     app.listen(port, () => {
