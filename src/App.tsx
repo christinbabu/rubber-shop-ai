@@ -27,6 +27,7 @@ import { Purchases } from './components/features/Purchases'
 import { Products } from './components/features/Products'
 import { Inventory } from './components/features/Inventory'
 import { Reports } from './components/features/Reports'
+import { MarketForecast } from './components/features/MarketForecast'
 import { Shop } from './components/features/Shop'
 import { Cart } from './components/features/Cart'
 import { Orders } from './components/features/Orders'
@@ -635,6 +636,8 @@ function App() {
             <Reports customers={customers} transactions={transactions} />
           )}
           {activeTab === 'finance' && <Reports customers={customers} transactions={transactions} />}
+
+          {activeTab === 'marketforecast' && <MarketForecast />}
 
           {/* Shop */}
           {activeTab === 'shop' && <Shop products={products} onAddToCart={addToCart} />}

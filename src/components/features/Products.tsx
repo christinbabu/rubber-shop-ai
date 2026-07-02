@@ -10,15 +10,26 @@ interface ProductsProps {
   onRemoveProduct: (productId: string) => void
 }
 
-const emptyForm = {
+type ProductForm = {
+  name: string
+  category: Product['category']
+  description: string
+  price: string
+  discountPrice: string
+  stock: string
+  sku: string
+  status: Product['status']
+}
+
+const emptyForm: ProductForm = {
   name: '',
-  category: 'Tools' as const,
+  category: 'Tools',
   description: '',
   price: '0',
   discountPrice: '',
   stock: '0',
   sku: '',
-  status: 'active' as const,
+  status: 'active',
 }
 
 export function Products({ products, onAddProduct, onUpdateProduct, onRemoveProduct }: ProductsProps) {

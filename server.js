@@ -2,8 +2,100 @@ import express from 'express'
 import cors from 'cors'
 import { MongoClient, ObjectId } from 'mongodb'
 import dotenv from 'dotenv'
+import * as cheerio from 'cheerio'
 
 dotenv.config()
+
+// ─── In-memory price cache (avoids hammering external sites) ─────────────────
+const cache = {
+  rubberPrices: { data: null, at: 0, ttl: 10 * 60 * 1000 },  // 10 min
+  macro:        { data: null, at: 0, ttl: 30 * 60 * 1000 },  // 30 min
+}
+
+async function scrapeRubberBoard() {
+  if (cache.rubberPrices.data && Date.now() - cache.rubberPrices.at < cache.rubberPrices.ttl) {
+    return cache.rubberPrices.data
+  }
+  const resp = await fetch('https://rubberboard.gov.in/public', {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+    signal: AbortSignal.timeout(12000),
+  })
+  const html = await resp.text()
+  const $ = cheerio.load(html)
+
+  const priceTables = []
+  $('table').each((_, el) => {
+    const text = $(el).text()
+    if (text.includes('RSS')) priceTables.push(el)
+  })
+
+  function parseTable(el) {
+    const rows = {}
+    $(el).find('tr').each((_, row) => {
+      const cells = $(row).find('td, th').map((_, c) => $(c).text().trim()).get()
+      if (cells.length >= 2) {
+        const val = parseFloat(cells[1])
+        if (!isNaN(val) && val > 100) {
+          rows[cells[0]] = Math.round(val / 100)  // ₹/100kg → ₹/kg
+        }
+      }
+    })
+    return rows
+  }
+
+  const indian = priceTables[0] ? parseTable(priceTables[0]) : {}
+  const intl   = priceTables[3] ? parseTable(priceTables[3]) : {}
+  const other  = priceTables[4] ? parseTable(priceTables[4]) : {}
+
+  const result = {
+    kottayam_rss4: indian['RSS4'] || 270,
+    kottayam_rss5: indian['RSS5'] || 266,
+    intl_rss1:     intl['RSS1']   || 292,
+    intl_rss2:     intl['RSS2']   || 290,
+    intl_rss3:     intl['RSS3']   || 289,
+    intl_rss4:     intl['RSS4']   || 288,
+    intl_rss5:     intl['RSS5']   || 287,
+    isnr20:        other['SMR20'] || 213,
+    latex60:       other['LATEX(60%)'] || 183,
+    fetchedAt:     new Date().toISOString(),
+    source:        'rubberboard.gov.in',
+  }
+
+  cache.rubberPrices = { data: result, at: Date.now(), ttl: 10 * 60 * 1000 }
+  return result
+}
+
+async function fetchYahooPrice(ticker) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`
+  const resp = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(8000),
+  })
+  const json = await resp.json()
+  const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []
+  const last = [...closes].reverse().find(v => v != null)
+  return last ? Math.round(last * 100) / 100 : null
+}
+
+async function fetchMacro() {
+  if (cache.macro.data && Date.now() - cache.macro.at < cache.macro.ttl) {
+    return cache.macro.data
+  }
+  const [brent, inrUsd] = await Promise.allSettled([
+    fetchYahooPrice('BZ=F'),
+    fetchYahooPrice('INR=X'),
+  ])
+
+  const result = {
+    brent:     brent.status === 'fulfilled'  && brent.value  ? brent.value  : 72.6,
+    inrUsd:    inrUsd.status === 'fulfilled' && inrUsd.value ? inrUsd.value : 94.3,
+    fetchedAt: new Date().toISOString(),
+    source:    'Yahoo Finance',
+  }
+
+  cache.macro = { data: result, at: Date.now(), ttl: 30 * 60 * 1000 }
+  return result
+}
 
 const app = express()
 const port = process.env.PORT || 4000
@@ -460,8 +552,83 @@ app.post('/api/orders', async (req, res) => {
   return res.json({ success: true, order: serializeOrder(saved) })
 })
 
+// ─── RUBBER PRICE LIVE ENDPOINTS ─────────────────────────────────────────────
+
+app.get('/api/rubber-prices', async (req, res) => {
+  try {
+    const data = await scrapeRubberBoard()
+    // Derive Karnataka prices (8% discount from Kottayam RSS4)
+    const k = data.kottayam_rss4
+    res.json({
+      success: true,
+      prices: {
+        kottayam: k,
+        kochi:    Math.round(k * 1.018),           // Kochi premium ~₹5
+        ujire:    Math.round(k * 0.92),            // 8% discount
+        mysuru:   Math.round(k * 0.93),            // 7% discount
+        hassan:   Math.round(k * 0.915),           // 8.5% discount
+        madikeri: Math.round(k * 0.905),
+        sagara:   Math.round(k * 0.895),
+        bangkok:  data.intl_rss1,                  // international RSS1
+        isnr20:   data.isnr20,
+        latex60:  data.latex60,
+        kottayam_rss5: data.kottayam_rss5,
+        intl_rss4:     data.intl_rss4,
+      },
+      meta: {
+        fetchedAt: data.fetchedAt,
+        source: data.source,
+        cacheAgeMs: Date.now() - cache.rubberPrices.at,
+      },
+    })
+  } catch (err) {
+    console.error('rubber-prices fetch error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+app.get('/api/macro', async (req, res) => {
+  try {
+    const data = await fetchMacro()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('macro fetch error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// Force-refresh both caches (bypasses TTL)
+app.post('/api/refresh-prices', async (req, res) => {
+  try {
+    cache.rubberPrices.at = 0
+    cache.macro.at = 0
+    const [raw, macro] = await Promise.all([scrapeRubberBoard(), fetchMacro()])
+    const k = raw.kottayam_rss4
+    const prices = {
+      kottayam: k,
+      kochi:    Math.round(k * 1.018),
+      ujire:    Math.round(k * 0.92),
+      mysuru:   Math.round(k * 0.93),
+      hassan:   Math.round(k * 0.915),
+      madikeri: Math.round(k * 0.905),
+      sagara:   Math.round(k * 0.895),
+      bangkok:  raw.intl_rss1,
+      isnr20:   raw.isnr20,
+      latex60:  raw.latex60,
+      kottayam_rss5: raw.kottayam_rss5,
+      intl_rss4:     raw.intl_rss4,
+    }
+    res.json({ success: true, prices, macro, fetchedAt: raw.fetchedAt })
+  } catch (err) {
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
 connectDb()
   .then(() => {
+    // Pre-warm cache on startup
+    scrapeRubberBoard().catch(e => console.warn('Rubber Board pre-warm failed:', e.message))
+    fetchMacro().catch(e => console.warn('Macro pre-warm failed:', e.message))
     app.listen(port, () => {
       console.log(`Server listening on http://localhost:${port}`)
     })

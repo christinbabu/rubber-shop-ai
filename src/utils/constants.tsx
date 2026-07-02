@@ -1,4 +1,4 @@
-import { Home, Users, ClipboardList, Package, Box, CreditCard, ShoppingCart, User } from 'lucide-react'
+import { Home, Users, ClipboardList, Package, Box, CreditCard, ShoppingCart, User, TrendingUp } from 'lucide-react'
 import type { Role } from '../types'
 
 export const roleOptions: Role[] = ['admin', 'customer', 'finance']
@@ -13,12 +13,14 @@ export const getNavItems = (role: Role | null) => {
       { id: 'purchases', label: 'Purchases', icon: <ClipboardList size={18} /> },
       { id: 'products', label: 'Products', icon: <Package size={18} /> },
       { id: 'inventory', label: 'Inventory', icon: <Box size={18} /> },
+      { id: 'marketforecast', label: 'Market Forecast', icon: <TrendingUp size={18} /> },
       { id: 'reports', label: 'Reports', icon: <CreditCard size={18} /> },
     ]
   }
   if (role === 'finance') {
     return [
       { id: 'finance', label: 'Finance', icon: <CreditCard size={18} /> },
+      { id: 'marketforecast', label: 'Market Forecast', icon: <TrendingUp size={18} /> },
       { id: 'reports', label: 'Reports', icon: <ClipboardList size={18} /> },
     ]
   }
