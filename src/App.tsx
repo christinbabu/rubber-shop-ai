@@ -5,6 +5,8 @@ import type { CartItem, Customer, Product, Role, Transaction } from './types'
 import { createId, todayString } from './utils/helpers'
 import { clearAuthSession, readAuthSession, saveAuthSession, AUTH_SESSION_TTL_MS } from './utils/authSession'
 import { mapCustomer } from './utils/customerMapper'
+import type { Factor } from './utils/marketFactors'
+import { FACTORS } from './utils/marketFactors'
 
 // Layout Components
 import { TopBar } from './components/layout/TopBar'
@@ -28,6 +30,9 @@ import { Products } from './components/features/Products'
 import { Inventory } from './components/features/Inventory'
 import { Reports } from './components/features/Reports'
 import { MarketForecast } from './components/features/MarketForecast'
+import { MarketFactors } from './components/features/MarketFactors'
+import { PricePredictor } from './components/features/PricePredictor'
+import { PurchaseRateSetter } from './components/features/PurchaseRateSetter'
 import { Shop } from './components/features/Shop'
 import { Cart } from './components/features/Cart'
 import { Orders } from './components/features/Orders'
@@ -54,6 +59,45 @@ function App() {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions)
   const [orders, setOrders] = useState(initialOrders)
   const [cart, setCart] = useState<CartItem[]>([])
+
+  // Market factor model state (shared by Market Forecast + Market Factors screens)
+  const [factors, setFactors] = useState<Factor[]>(FACTORS)
+  const [crudeSource, setCrudeSource] = useState<string | null>(null)
+  const [crudeUpdatedAt, setCrudeUpdatedAt] = useState<Date | null>(null)
+  const [spotPrice, setSpotPrice] = useState<number | null>(null)
+  const [spotUpdatedAt, setSpotUpdatedAt] = useState<Date | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchLiveMacro() {
+      try {
+        const resp = await fetch('/api/live-data')
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        const json = await resp.json()
+        if (!json.success || cancelled) return
+        if (json.macro) {
+          setFactors((current) => current.map((item) => {
+            if (item.id === 'crude')  return { ...item, val: Math.round(json.macro.brent  * 100) / 100 }
+            if (item.id === 'inr')    return { ...item, val: Math.round(json.macro.inrUsd * 100) / 100 }
+            return item
+          }))
+          setCrudeSource(json.macro.source ?? 'live')
+          setCrudeUpdatedAt(new Date())
+        }
+        if (json.prices?.kottayam) {
+          setSpotPrice(json.prices.kottayam)
+          setSpotUpdatedAt(new Date())
+        }
+      } catch {
+        // keep last known factor values on fetch failure
+      }
+    }
+
+    fetchLiveMacro()
+    const id = setInterval(fetchLiveMacro, 60 * 1000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -104,6 +148,21 @@ function App() {
 
     loadInitialData()
   }, [])
+
+  // Keep the persisted session's activeTab (and related fields) in sync so a
+  // page refresh restores whichever screen the user was last on, instead of
+  // always falling back to the tab stored at login time.
+  useEffect(() => {
+    if (stage !== 'app' || !role) return
+    saveAuthSession({
+      role,
+      user,
+      selectedCustomerId,
+      activeTab,
+      theme,
+      expiresAt: Date.now() + AUTH_SESSION_TTL_MS,
+    })
+  }, [stage, role, user, selectedCustomerId, activeTab, theme])
 
   // Shop State
   const [checkoutMethod, setCheckoutMethod] = useState<'Cash on Delivery' | 'Bank Transfer' | 'UPI' | 'Credit/Debit Card'>('Cash on Delivery')
@@ -637,7 +696,21 @@ function App() {
           )}
           {activeTab === 'finance' && <Reports customers={customers} transactions={transactions} />}
 
-          {activeTab === 'marketforecast' && <MarketForecast />}
+          {activeTab === 'marketforecast' && (
+            <MarketForecast
+              factors={factors}
+              setFactors={setFactors}
+              crudeSource={crudeSource}
+              crudeUpdatedAt={crudeUpdatedAt}
+            />
+          )}
+          {activeTab === 'marketfactors' && <MarketFactors factors={factors} />}
+          {activeTab === 'pricepredictor' && (
+            <PricePredictor factors={factors} spotPrice={spotPrice} spotUpdatedAt={spotUpdatedAt} />
+          )}
+          {activeTab === 'purchaserate' && role === 'admin' && (
+            <PurchaseRateSetter spotPrice={spotPrice} />
+          )}
 
           {/* Shop */}
           {activeTab === 'shop' && <Shop products={products} onAddToCart={addToCart} />}

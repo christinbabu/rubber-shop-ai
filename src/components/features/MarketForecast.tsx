@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -9,23 +10,9 @@ import {
   CartesianGrid,
   Tooltip,
   ReferenceLine,
-  LineChart,
-  Line as SparkLine,
 } from 'recharts'
-
-type FactorId = 'china' | 'deficit' | 'monsoon' | 'crude' | 'seasia' | 'inr' | 'shipping'
-
-type Factor = {
-  id: FactorId
-  label: string
-  min: number
-  max: number
-  unit: string
-  weight: number
-  icon: string
-  step?: number
-  val: number
-}
+import type { Factor } from '../../utils/marketFactors'
+import { computePrediction } from '../../utils/marketFactors'
 
 type ForecastPoint = {
   month: string
@@ -52,45 +39,6 @@ const MONTHLY_FORECAST: ForecastPoint[] = [
   { month: "Dec '26", pred: 240, lo: 223, hi: 257, bull: 262, bear: 218, season: 'Year-End', momentum: 'bearish', confidence: 63, catalyst: 'Pre-wintering inventory build begins. Q4 tyre demand stable.', risk: 'Inventory overhang from bumper harvest.', supply: 'Ample' },
 ]
 
-const FACTORS: Factor[] = [
-  { id: 'china', label: 'China demand', min: 1, max: 10, unit: '/10', weight: 0.22, icon: '🇨🇳', val: 7 },
-  { id: 'deficit', label: 'India deficit (L MT)', min: 2, max: 9, unit: ' L MT', weight: 0.20, icon: '📦', step: 0.5, val: 5.5 },
-  { id: 'monsoon', label: 'Monsoon disruption', min: 1, max: 10, unit: '/10', weight: 0.16, icon: '🌧️', val: 6 },
-  { id: 'crude', label: 'Brent crude', min: 55, max: 115, unit: ' $/bbl', weight: 0.14, icon: '🛢️', val: 82 },
-  { id: 'seasia', label: 'SE Asia supply', min: 1, max: 10, unit: '/10', weight: 0.12, icon: '🌏', val: 6 },
-  { id: 'inr', label: 'INR/USD rate', min: 80, max: 93, unit: ' ₹/$', weight: 0.09, icon: '💱', val: 84.5 },
-  { id: 'shipping', label: 'Shipping index', min: 1, max: 10, unit: '/10', weight: 0.07, icon: '🚢', val: 6 },
-]
-
-function computePrediction(factors: Factor[]) {
-  const f = factors.reduce((acc, s) => ({ ...acc, [s.id]: s.val }), {} as Record<FactorId, number>)
-  const base = 178
-  const china = (f.china - 5) * 5.2
-  const deficit = (f.deficit - 4.5) * 5.8
-  const monsoon = (f.monsoon - 5) * 3.8
-  const crude = (f.crude - 75) * 0.38
-  const seasia = (f.seasia - 5) * 3.2
-  const inr = (f.inr - 84) * 0.9
-  const shipping = (f.shipping - 5) * 1.6
-  const total = base + china + deficit + monsoon + crude + seasia + inr + shipping
-  const pred = Math.round(Math.max(90, Math.min(300, total)))
-  const spread = Math.round(pred * 0.065)
-  return {
-    pred,
-    lo: pred - spread,
-    hi: pred + spread,
-    contribs: [
-      { name: 'China demand', val: Math.round(china) },
-      { name: 'Supply deficit', val: Math.round(deficit) },
-      { name: 'Monsoon', val: Math.round(monsoon) },
-      { name: 'Crude oil', val: Math.round(crude) },
-      { name: 'SE Asia supply', val: Math.round(seasia) },
-      { name: 'INR/USD', val: Math.round(inr) },
-      { name: 'Shipping', val: Math.round(shipping) },
-    ],
-  }
-}
-
 const ForecastTooltip = ({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) => {
   if (!active || !payload?.length) return null
   const point = payload[0].payload
@@ -107,8 +55,14 @@ const ForecastTooltip = ({ active, payload, label }: { active?: boolean; payload
   )
 }
 
-export function MarketForecast() {
-  const [factors, setFactors] = useState<Factor[]>(FACTORS)
+type MarketForecastProps = {
+  factors: Factor[]
+  setFactors: Dispatch<SetStateAction<Factor[]>>
+  crudeSource: string | null
+  crudeUpdatedAt: Date | null
+}
+
+export function MarketForecast({ factors, setFactors, crudeSource, crudeUpdatedAt }: MarketForecastProps) {
   const [selectedMonth, setSelectedMonth] = useState<string>(MONTHLY_FORECAST[0].month)
   const result = useMemo(() => computePrediction(factors), [factors])
   const selected = MONTHLY_FORECAST.find((item) => item.month === selectedMonth) ?? MONTHLY_FORECAST[0]
@@ -191,12 +145,17 @@ export function MarketForecast() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div style={{ padding: '1rem', background: '#08111b', border: '1px solid #1a2744', borderRadius: 10 }}>
             <h3 style={{ marginBottom: 12 }}>Scenario drivers</h3>
-            {FACTORS.map((factor) => (
+            {factors.map((factor) => (
               <div key={factor.id} style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
                   <span>{factor.icon} {factor.label}</span>
                   <span>{factor.val}{factor.unit}</span>
                 </div>
+                {factor.id === 'crude' && crudeUpdatedAt && (
+                  <div style={{ fontSize: 10, color: '#4ade80', marginBottom: 4 }}>
+                    ● Live — {crudeSource} · {crudeUpdatedAt.toLocaleTimeString()}
+                  </div>
+                )}
                 <input
                   type="range"
                   min={factor.min}

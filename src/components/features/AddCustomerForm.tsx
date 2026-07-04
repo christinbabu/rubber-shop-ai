@@ -63,7 +63,6 @@ export function AddCustomerForm({ editingCustomer, onAddCustomer, onUpdateCustom
     if (
       !form.fullName ||
       !form.mobile ||
-      !form.email ||
       !form.address ||
       !form.village ||
       !form.district ||
@@ -124,7 +123,7 @@ export function AddCustomerForm({ editingCustomer, onAddCustomer, onUpdateCustom
           <input value={form.mobile} onChange={(e) => handleChange('mobile', e.target.value)} />
         </label>
         <label>
-          Email Address
+          Email Address (optional — purchase rate updates are emailed here if set)
           <input type="email" value={form.email} onChange={(e) => handleChange('email', e.target.value)} />
         </label>
         <label>

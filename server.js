@@ -3,6 +3,7 @@ import cors from 'cors'
 import { MongoClient, ObjectId } from 'mongodb'
 import dotenv from 'dotenv'
 import * as cheerio from 'cheerio'
+import nodemailer from 'nodemailer'
 
 dotenv.config()
 
@@ -50,15 +51,15 @@ async function scrapeRubberBoard() {
   const other  = priceTables[4] ? parseTable(priceTables[4]) : {}
 
   const result = {
-    kottayam_rss4: indian['RSS4'] || 270,
-    kottayam_rss5: indian['RSS5'] || 266,
-    intl_rss1:     intl['RSS1']   || 292,
-    intl_rss2:     intl['RSS2']   || 290,
-    intl_rss3:     intl['RSS3']   || 289,
-    intl_rss4:     intl['RSS4']   || 288,
-    intl_rss5:     intl['RSS5']   || 287,
-    isnr20:        other['SMR20'] || 213,
-    latex60:       other['LATEX(60%)'] || 183,
+    kottayam_rss4: indian['RSS4'] || 0,
+    kottayam_rss5: indian['RSS5'] || 0,
+    intl_rss1:     intl['RSS1']   || 0,
+    intl_rss2:     intl['RSS2']   || 0,
+    intl_rss3:     intl['RSS3']   || 0,
+    intl_rss4:     intl['RSS4']   || 0,
+    intl_rss5:     intl['RSS5']   || 0,
+    isnr20:        other['SMR20'] || 0,
+    latex60:       other['LATEX(60%)'] || 0,
     fetchedAt:     new Date().toISOString(),
     source:        'rubberboard.gov.in',
   }
@@ -79,20 +80,47 @@ async function fetchYahooPrice(ticker) {
   return last ? Math.round(last * 100) / 100 : null
 }
 
+// Brent crude spot price, scraped from the TradingEconomics commodity page.
+// The page renders a table of futures quotes; the Brent row carries the
+// Bloomberg ticker "CO1:COM" (ICE Brent front-month), which we match directly
+// in the raw HTML — no JS execution needed since the table is server-rendered.
+async function fetchBrentTradingEconomics() {
+  const resp = await fetch('https://tradingeconomics.com/commodity/brent-crude-oil', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    },
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+  const html = await resp.text()
+  const match = html.match(/data-symbol="CO1:COM"[^>]*>[\s\S]*?id="p">\s*([\d.]+)/)
+  const price = match ? parseFloat(match[1]) : null
+  if (!price) throw new Error('Brent price not found in TradingEconomics page')
+  return price
+}
+
 async function fetchMacro() {
   if (cache.macro.data && Date.now() - cache.macro.at < cache.macro.ttl) {
     return cache.macro.data
   }
-  const [brent, inrUsd] = await Promise.allSettled([
-    fetchYahooPrice('BZ=F'),
+  const [brentTE, inrUsd] = await Promise.allSettled([
+    fetchBrentTradingEconomics(),
     fetchYahooPrice('INR=X'),
   ])
 
+  let brent = brentTE.status === 'fulfilled' ? brentTE.value : null
+  let brentSource = 'TradingEconomics'
+  if (!brent) {
+    const fallback = await fetchYahooPrice('BZ=F').catch(() => null)
+    brent = fallback ?? 0
+    brentSource = fallback ? 'Yahoo Finance' : 'unavailable'
+  }
+
   const result = {
-    brent:     brent.status === 'fulfilled'  && brent.value  ? brent.value  : 72.6,
-    inrUsd:    inrUsd.status === 'fulfilled' && inrUsd.value ? inrUsd.value : 94.3,
+    brent,
+    inrUsd:    inrUsd.status === 'fulfilled' && inrUsd.value ? inrUsd.value : 0,
     fetchedAt: new Date().toISOString(),
-    source:    'Yahoo Finance',
+    source:    `${brentSource} (Brent) · Yahoo Finance (INR/USD)`,
   }
 
   cache.macro = { data: result, at: Date.now(), ttl: 30 * 60 * 1000 }
@@ -219,21 +247,21 @@ let lastSnapshotAt = 0
 async function savePriceSnapshot(rb, macro, ka) {
   if (!db) return
   if (Date.now() - lastSnapshotAt < 5 * 60 * 1000) return   // max 1 save per 5 min
-  const k = rb?.kottayam_rss4 ?? 270
+  const k = rb?.kottayam_rss4 ?? 0
   try {
     await db.collection('rubber_prices_history').insertOne({
       fetchedAt: new Date(),
       kottayam:  k,
       kochi:     Math.round(k * 1.018),
       rss5:      rb?.kottayam_rss5 ?? Math.round(k * 0.984),
-      isnr20:    ka?.isnr20  ?? rb?.isnr20  ?? 213,
-      latex60:   ka?.latex60 ?? rb?.latex60 ?? 183,
+      isnr20:    ka?.isnr20  ?? rb?.isnr20  ?? 0,
+      latex60:   ka?.latex60 ?? rb?.latex60 ?? 0,
       ujire:     ka?.ujire?.rss4  ?? Math.round(k * 0.92),
       mysuru:    ka?.mysuru?.rss4 ?? Math.round(k * 0.93),
       hassan:    ka?.hassan?.rss4 ?? Math.round(k * 0.915),
-      bangkok:   ka?.bangkokRss3  ?? rb?.intl_rss1 ?? 292,
-      brent:     macro?.brent  ?? null,
-      inrUsd:    macro?.inrUsd ?? null,
+      bangkok:   ka?.bangkokRss3  ?? rb?.intl_rss1 ?? 0,
+      brent:     macro?.brent  ?? 0,
+      inrUsd:    macro?.inrUsd ?? 0,
       source:    rb?.source ?? 'rubberboard.gov.in',
     })
     lastSnapshotAt = Date.now()
@@ -259,6 +287,7 @@ async function connectDb() {
   console.log(`Connected to MongoDB at ${uri}`)
   db = client.db(dbName)
   await ensureSampleUsers()
+  await db.collection('purchase_rates').createIndex({ date: 1 }, { unique: true })
 }
 
 async function ensureSampleUsers() {
@@ -760,7 +789,7 @@ app.post('/api/refresh-prices', async (req, res) => {
     const macro = macroResult.value ?? null
     const ka    = kaResult.value    ?? null
     const comm  = commResult.value  ?? null
-    const k     = rb?.kottayam_rss4 ?? 270
+    const k     = rb?.kottayam_rss4 ?? 0
     const prices = {
       kottayam: k,
       kochi:    Math.round(k * 1.018),
@@ -769,9 +798,9 @@ app.post('/api/refresh-prices', async (req, res) => {
       hassan:   ka?.hassan?.rss4   ?? Math.round(k * 0.915),
       madikeri: ka?.madikeri?.rss4 ?? Math.round(k * 0.905),
       sagara:   ka?.sagara?.rss4   ?? Math.round(k * 0.895),
-      bangkok:  comm?.bangkokRss3Inr ?? ka?.bangkokRss3 ?? rb?.intl_rss1 ?? 292,
-      isnr20:   ka?.isnr20  ?? rb?.isnr20  ?? 213,
-      latex60:  ka?.latex60 ?? rb?.latex60 ?? 183,
+      bangkok:  comm?.bangkokRss3Inr ?? ka?.bangkokRss3 ?? rb?.intl_rss1 ?? 0,
+      isnr20:   ka?.isnr20  ?? rb?.isnr20  ?? 0,
+      latex60:  ka?.latex60 ?? rb?.latex60 ?? 0,
       kottayam_rss5: rb?.kottayam_rss5 ?? Math.round(k * 0.984),
       intl_rss4:     ka?.bangkokRss4   ?? rb?.intl_rss4 ?? Math.round(k * 1.067),
     }
@@ -818,7 +847,7 @@ app.get('/api/live-data', async (req, res) => {
     const macro = macroResult.value ?? null
     const ka    = kaResult.value    ?? null
     const comm  = commResult.value  ?? null
-    const k     = rb?.kottayam_rss4 ?? 270
+    const k     = rb?.kottayam_rss4 ?? 0
 
     if (rb) savePriceSnapshot(rb, macro, ka).catch(() => {})
 
@@ -833,10 +862,10 @@ app.get('/api/live-data', async (req, res) => {
         madikeri: ka?.madikeri?.rss4 ?? Math.round(k * 0.905),
         sagara:   ka?.sagara?.rss4   ?? Math.round(k * 0.895),
         // Bangkok: prefer Commodities-API → Canara Post (free) → Rubber Board intl
-        bangkok:  comm?.bangkokRss3Inr ?? ka?.bangkokRss3 ?? rb?.intl_rss1 ?? 292,
+        bangkok:  comm?.bangkokRss3Inr ?? ka?.bangkokRss3 ?? rb?.intl_rss1 ?? 0,
         // ISNR20 + Latex: prefer Canara Post (more reliable) → Rubber Board
-        isnr20:   ka?.isnr20  ?? rb?.isnr20  ?? 213,
-        latex60:  ka?.latex60 ?? rb?.latex60 ?? 183,
+        isnr20:   ka?.isnr20  ?? rb?.isnr20  ?? 0,
+        latex60:  ka?.latex60 ?? rb?.latex60 ?? 0,
         kottayam_rss5: rb?.kottayam_rss5 ?? Math.round(k * 0.984),
         intl_rss4:     ka?.bangkokRss4   ?? rb?.intl_rss4 ?? Math.round(k * 1.067),
       },
@@ -887,6 +916,133 @@ app.get('/api/price-history', async (req, res) => {
         source:   r.source,
       })),
     })
+  } catch (err) {
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Rate notification emails ────────────────────────────────────────────────
+const GRADE_LABELS = { rss4: 'RSS4', rss5: 'RSS5', lot: 'Lot', scrap: 'Scrap' }
+
+let mailTransporter = null
+if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+  mailTransporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 465,
+    secure: Number(process.env.SMTP_PORT) !== 587,   // 465 = implicit TLS, 587 = STARTTLS
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  })
+} else {
+  console.warn('[mail] SMTP_HOST/SMTP_USER/SMTP_PASS not set — purchase rate emails will be skipped. See .env.example.')
+}
+
+// Emails every customer with an email on file the day's purchase rates.
+// Returns a summary instead of throwing — a save should still succeed even if
+// mail delivery fails or isn't configured.
+async function emailRateToCustomers(date, rates) {
+  const customers = await db.collection('customers')
+    .find({ email: { $exists: true, $ne: '' } })
+    .toArray()
+
+  if (!mailTransporter || customers.length === 0) {
+    return { attempted: 0, sent: 0, failed: 0 }
+  }
+
+  const rows = RATE_GRADES
+    .filter((g) => rates[g] != null)
+    .map((g) => `<tr><td style="padding:4px 12px;color:#475569">${GRADE_LABELS[g]}</td><td style="padding:4px 12px;font-weight:700">₹${rates[g]}/kg</td></tr>`)
+    .join('')
+
+  let sent = 0, failed = 0
+  await Promise.all(customers.map(async (customer) => {
+    try {
+      await mailTransporter.sendMail({
+        from: process.env.MAIL_FROM || process.env.SMTP_USER,
+        to: customer.email,
+        subject: `Rubber purchase rate for ${date}`,
+        html: `
+          <p>Hi ${customer.fullName || 'there'},</p>
+          <p>Today's rubber purchase rate (${date}):</p>
+          <table style="border-collapse:collapse">${rows}</table>
+          <p style="color:#94a3b8;font-size:12px;margin-top:16px">— Rubber Trader</p>
+        `,
+      })
+      sent += 1
+    } catch (err) {
+      failed += 1
+      console.warn(`[mail] Failed to send rate email to ${customer.email}:`, err.message)
+    }
+  }))
+
+  return { attempted: customers.length, sent, failed }
+}
+
+// ─── Purchase Rate endpoints: the rate this business pays farmers each day ───
+const RATE_GRADES = ['rss4', 'rss5', 'lot', 'scrap']
+
+app.get('/api/purchase-rates', async (req, res) => {
+  try {
+    const year  = parseInt(req.query.year)
+    const month = parseInt(req.query.month)   // 1-12
+    if (!year || !month || month < 1 || month > 12) {
+      return res.status(400).json({ success: false, message: 'year and month (1-12) are required.' })
+    }
+    const prefix = `${year}-${String(month).padStart(2, '0')}`
+    const records = await db.collection('purchase_rates')
+      .find({ date: { $regex: `^${prefix}` } })
+      .toArray()
+    res.json({
+      success: true,
+      rates: records.map(r => ({ date: r.date, rates: r.rates, updatedAt: r.updatedAt })),
+    })
+  } catch (err) {
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+app.post('/api/purchase-rates', async (req, res) => {
+  try {
+    const { date, rates } = req.body
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
+      return res.status(400).json({ success: false, message: 'date must be YYYY-MM-DD.' })
+    }
+    if (!rates || typeof rates !== 'object') {
+      return res.status(400).json({ success: false, message: 'rates object is required.' })
+    }
+
+    const cleanRates = {}
+    for (const grade of RATE_GRADES) {
+      if (rates[grade] == null || rates[grade] === '') continue
+      const num = Number(rates[grade])
+      if (!Number.isFinite(num) || num <= 0) {
+        return res.status(400).json({ success: false, message: `${grade} must be a positive number.` })
+      }
+      cleanRates[grade] = num
+    }
+    if (Object.keys(cleanRates).length === 0) {
+      return res.status(400).json({ success: false, message: 'At least one grade rate is required.' })
+    }
+
+    const updatedAt = new Date()
+    await db.collection('purchase_rates').updateOne(
+      { date },
+      { $set: { date, rates: cleanRates, updatedAt } },
+      { upsert: true },
+    )
+
+    const emailed = await emailRateToCustomers(date, cleanRates)
+
+    res.json({ success: true, date, rates: cleanRates, updatedAt, emailed })
+  } catch (err) {
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+app.delete('/api/purchase-rates/:date', async (req, res) => {
+  try {
+    const { date } = req.params
+    await db.collection('purchase_rates').deleteOne({ date })
+    res.json({ success: true })
   } catch (err) {
     res.status(503).json({ success: false, error: err.message })
   }

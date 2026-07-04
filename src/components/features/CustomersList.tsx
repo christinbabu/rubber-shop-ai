@@ -24,6 +24,7 @@ export function CustomersList({ customers, onVerifyBank, onEditCustomer, onCreat
           <tr>
             <th>Name</th>
             <th>Mobile</th>
+            <th>Email</th>
             <th>Village</th>
             <th>Bank Verified</th>
             <th>Action</th>
@@ -34,6 +35,7 @@ export function CustomersList({ customers, onVerifyBank, onEditCustomer, onCreat
             <tr key={customer.id}>
               <td data-label="Name">{customer.fullName}</td>
               <td data-label="Mobile">{customer.mobile}</td>
+              <td data-label="Email">{customer.email || <span className="muted">Not set</span>}</td>
               <td data-label="Village">{customer.village}</td>
               <td data-label="Bank Verified">{customer.bank.verified ? 'Yes' : 'No'}</td>
               <td data-label="Action">

@@ -1,4 +1,4 @@
-import { Home, Users, ClipboardList, Package, Box, CreditCard, ShoppingCart, User, TrendingUp } from 'lucide-react'
+import { Home, Users, ClipboardList, Package, Box, CreditCard, ShoppingCart, User, TrendingUp, BarChart3, CalendarClock, Tag } from 'lucide-react'
 import type { Role } from '../types'
 
 export const roleOptions: Role[] = ['admin', 'customer', 'finance']
@@ -14,6 +14,9 @@ export const getNavItems = (role: Role | null) => {
       { id: 'products', label: 'Products', icon: <Package size={18} /> },
       { id: 'inventory', label: 'Inventory', icon: <Box size={18} /> },
       { id: 'marketforecast', label: 'Market Forecast', icon: <TrendingUp size={18} /> },
+      { id: 'marketfactors', label: 'Market Factors', icon: <BarChart3 size={18} /> },
+      { id: 'pricepredictor', label: 'Price Predictor', icon: <CalendarClock size={18} /> },
+      { id: 'purchaserate', label: 'Purchase Rate', icon: <Tag size={18} /> },
       { id: 'reports', label: 'Reports', icon: <CreditCard size={18} /> },
     ]
   }
@@ -21,6 +24,8 @@ export const getNavItems = (role: Role | null) => {
     return [
       { id: 'finance', label: 'Finance', icon: <CreditCard size={18} /> },
       { id: 'marketforecast', label: 'Market Forecast', icon: <TrendingUp size={18} /> },
+      { id: 'marketfactors', label: 'Market Factors', icon: <BarChart3 size={18} /> },
+      { id: 'pricepredictor', label: 'Price Predictor', icon: <CalendarClock size={18} /> },
       { id: 'reports', label: 'Reports', icon: <ClipboardList size={18} /> },
     ]
   }
