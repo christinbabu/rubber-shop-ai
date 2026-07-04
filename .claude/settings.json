@@ -12,7 +12,10 @@
       "Bash(curl -s http://localhost:4000/api/rubber-prices)",
       "Bash(python3 -m json.tool)",
       "Bash(kill %1)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(python python/verify_sources.py)",
+      "Bash(python3 python/verify_sources.py)",
+      "Bash(node --input-type=module --check)"
     ]
   }
 }

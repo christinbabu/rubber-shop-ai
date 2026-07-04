@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import type { TabId, LiveMarket, Factor, AiOutputLine } from './types'
+import type { TabId, LiveMarket, Factor, AiOutputLine, ForecastPoint, KarnatakaLive } from './types'
 import { LIVE_MARKETS, FACTORS } from './data'
-import { jitter, generateSpark, computePrediction, buildDailyForecast } from './utils'
+import { jitter, generateSpark, computePrediction, buildDailyForecast, buildMonthlyForecast } from './utils'
 import { S } from './styles'
 import { DailyTab }       from './tabs/DailyTab'
 import { ForecastTab }    from './tabs/ForecastTab'
@@ -9,20 +9,23 @@ import { YearAnalysisTab }from './tabs/YearAnalysisTab'
 import { DashboardTab }   from './tabs/DashboardTab'
 import { PredictorTab }   from './tabs/PredictorTab'
 import { AnalysisTab }    from './tabs/AnalysisTab'
-import { KarnatakaTab }   from './tabs/KarnatakaTab'
+import { KarnatakaTab }    from './tabs/KarnatakaTab'
+import { PriceHistoryTab } from './tabs/PriceHistoryTab'
 
 const API = 'http://localhost:4000'
-const PRICE_REFRESH_MS  = 10 * 60 * 1000  // 10 min auto-refresh
-const TICK_INTERVAL_MS  = 3000             // 3-sec price tick simulation
+const PRICE_REFRESH_MS    = 60 * 1000        // 1 min  — re-fetch all sources (macro every call, rubber board cached 10 min)
+const FORECAST_REFRESH_MS = 60 * 1000        // 1 min  — recompute forecast from live spot
+const TICK_INTERVAL_MS    = 3000             // 3 sec  — price tick simulation
 
 const TABS: [TabId, string][] = [
-  ['daily',       '30-Day Daily'],
-  ['forecast',    '12M Forecast'],
-  ['karnataka',   'Karnataka'],
-  ['yearanalysis','Year Analysis'],
-  ['dashboard',   'Dashboard'],
-  ['predictor',   'AI Predictor'],
-  ['analysis',    'AI Analysis'],
+  ['daily',        '30-Day Daily'],
+  ['forecast',     '12M Forecast'],
+  ['pricehistory', 'Price History'],
+  ['karnataka',    'Karnataka'],
+  ['yearanalysis', 'Year Analysis'],
+  ['dashboard',    'Dashboard'],
+  ['predictor',    'AI Predictor'],
+  ['analysis',     'AI Analysis'],
 ]
 
 function initLiveMarkets(): LiveMarket[] {
@@ -47,10 +50,13 @@ export function RubberPredictor() {
   const [aiRunning,       setAiRunning]       = useState(false)
   const [aiOutput,        setAiOutput]        = useState<AiOutputLine[]>([])
   const [aiProgress,      setAiProgress]      = useState(0)
-  const [dailyData,       setDailyData]       = useState(() => buildDailyForecast(270))
-  const [lastUpdated,     setLastUpdated]     = useState<Date | null>(null)
-  const [refreshing,      setRefreshing]      = useState(false)
-  const [fetchError,      setFetchError]      = useState<string | null>(null)
+  const [dailyData,           setDailyData]           = useState(() => buildDailyForecast(270))
+  const [monthlyForecast,     setMonthlyForecast]     = useState<ForecastPoint[]>(() => buildMonthlyForecast(270))
+  const [forecastUpdatedAt,   setForecastUpdatedAt]   = useState<Date | null>(null)
+  const [lastUpdated,         setLastUpdated]         = useState<Date | null>(null)
+  const [refreshing,          setRefreshing]          = useState(false)
+  const [fetchError,          setFetchError]          = useState<string | null>(null)
+  const [karnatakaLive,       setKarnatakaLive]       = useState<KarnatakaLive | null>(null)
   const liveBasesRef = useRef<Record<string, number>>({})
 
   const result     = useMemo(() => computePrediction(factors), [factors])
@@ -84,37 +90,38 @@ export function RubberPredictor() {
     setFetchError(null)
   }
 
-  // Fetch live prices from server proxy
+  // Fetch all live data from server (single combined endpoint)
   async function fetchLivePrices(force = false) {
     try {
       setRefreshing(true)
-      const endpoint = force ? `${API}/api/refresh-prices` : `${API}/api/rubber-prices`
+      const endpoint = force ? `${API}/api/refresh-prices` : `${API}/api/live-data`
       const method   = force ? 'POST' : 'GET'
       const resp = await fetch(endpoint, { method })
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
       const json = await resp.json()
       if (!json.success) throw new Error(json.error || 'fetch failed')
-      const prices = force ? json.prices : json.prices
-      applyRealPrices(prices)
 
-      // Rebuild daily forecast from real Kottayam price
-      const spot = prices.kottayam || 270
-      setDailyData(buildDailyForecast(spot))
+      // Apply market prices
+      applyRealPrices(json.prices)
 
-      // Update factors with real macro if available
-      if (!force) {
-        const macroResp = await fetch(`${API}/api/macro`)
-        if (macroResp.ok) {
-          const macro = await macroResp.json()
-          if (macro.success) {
-            setFactors(prev => prev.map(f => {
-              if (f.id === 'crude') return { ...f, val: Math.round(macro.brent * 10) / 10 }
-              if (f.id === 'inr')   return { ...f, val: Math.round(macro.inrUsd * 10) / 10 }
-              return f
-            }))
-          }
-        }
+      // Apply Karnataka live grades from Canara Post
+      if (json.karnataka) setKarnatakaLive(json.karnataka as KarnatakaLive)
+
+      // Apply macro factors (brent + INR/USD)
+      const macro = json.macro
+      if (macro) {
+        setFactors(prev => prev.map(f => {
+          if (f.id === 'crude') return { ...f, val: Math.round(macro.brent  * 10) / 10 }
+          if (f.id === 'inr')   return { ...f, val: Math.round(macro.inrUsd * 10) / 10 }
+          return f
+        }))
       }
+
+      // Rebuild both forecasts from real Kottayam price
+      const spot = json.prices.kottayam || 270
+      setDailyData(buildDailyForecast(spot))
+      setMonthlyForecast(buildMonthlyForecast(spot))
+      setForecastUpdatedAt(new Date())
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Network error'
       setFetchError(msg)
@@ -140,6 +147,23 @@ export function RubberPredictor() {
         return { ...m, prev: m.price, price: newP, change: chg, pct: +((chg / m.prev) * 100).toFixed(2), spark: [...m.spark.slice(1), { v: newP }] }
       }))
     }, TICK_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  // Every 1 minute: recompute daily + monthly forecast from latest spot price
+  useEffect(() => {
+    function recomputeForecast() {
+      setLiveMarkets(prev => {
+        const spot = prev.find(m => m.id === 'kottayam')?.price ?? 270
+        setDailyData(buildDailyForecast(spot))
+        setMonthlyForecast(buildMonthlyForecast(spot))
+        setForecastUpdatedAt(new Date())
+        return prev  // no market price change, just trigger recompute
+      })
+    }
+    // Run immediately on mount, then every minute
+    recomputeForecast()
+    const id = setInterval(recomputeForecast, FORECAST_REFRESH_MS)
     return () => clearInterval(id)
   }, [])
 
@@ -236,9 +260,10 @@ export function RubberPredictor() {
 
       {/* Tab body */}
       <div style={S.body}>
-        {tab === 'daily'        && <DailyTab        dailyData={dailyData} selectedDay={selectedDay} setSelectedDay={setSelectedDay} mainMarket={mainMarket} />}
-        {tab === 'forecast'     && <ForecastTab     activeScenario={activeScenario} setActiveScenario={setActiveScenario} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} mainMarket={mainMarket} />}
-        {tab === 'karnataka'    && <KarnatakaTab />}
+        {tab === 'daily'        && <DailyTab        dailyData={dailyData} selectedDay={selectedDay} setSelectedDay={setSelectedDay} mainMarket={mainMarket} forecastUpdatedAt={forecastUpdatedAt} />}
+        {tab === 'pricehistory' && <PriceHistoryTab />}
+        {tab === 'forecast'     && <ForecastTab     activeScenario={activeScenario} setActiveScenario={setActiveScenario} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} mainMarket={mainMarket} monthlyForecast={monthlyForecast} forecastUpdatedAt={forecastUpdatedAt} />}
+        {tab === 'karnataka'    && <KarnatakaTab karnatakaLive={karnatakaLive} kottayamSpot={mainMarket?.price ?? 270} />}
         {tab === 'yearanalysis' && <YearAnalysisTab selectedYear={selectedYear} setSelectedYear={setSelectedYear} />}
         {tab === 'dashboard'    && <DashboardTab    liveMarkets={liveMarkets} mainMarket={mainMarket} />}
         {tab === 'predictor'    && <PredictorTab    factors={factors} setFactors={setFactors} result={result} />}

@@ -12,9 +12,10 @@ type Props = {
   selectedDay: number | null
   setSelectedDay: (i: number) => void
   mainMarket: LiveMarket | undefined
+  forecastUpdatedAt: Date | null
 }
 
-export function DailyTab({ dailyData, selectedDay, setSelectedDay, mainMarket }: Props) {
+export function DailyTab({ dailyData, selectedDay, setSelectedDay, mainMarket, forecastUpdatedAt }: Props) {
   const selD      = selectedDay !== null ? dailyData[selectedDay] : dailyData[0]
   const buyDays   = dailyData.filter(d => d.signal === 'BUY').length
   const sellDays  = dailyData.filter(d => d.signal === 'SELL').length
@@ -30,7 +31,8 @@ export function DailyTab({ dailyData, selectedDay, setSelectedDay, mainMarket }:
     { label: 'Sell signals', val: sellDays,                 sub: 'of 25 days',    color: '#f87171' },
   ]
 
-  const vsSpot = (selD?.price ?? 245) - 245
+  const spot   = mainMarket?.price ?? 270
+  const vsSpot = (selD?.price ?? spot) - spot
   const confBand = Math.round((selD?.hi ?? 0) - (selD?.price ?? 0))
 
   return (
@@ -50,7 +52,14 @@ export function DailyTab({ dailyData, selectedDay, setSelectedDay, mainMarket }:
       <div style={{ ...S.card, marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div style={S.ct}>30-Day Daily Price Forecast — RSS4 Kottayam (₹/kg)</div>
-          <div style={{ fontSize: 10, color: '#475569' }}>Click bar for details · Shaded band = confidence range</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {forecastUpdatedAt && (
+              <span style={{ fontSize: 9, color: '#334155', fontFamily: 'DM Mono' }}>
+                forecast computed {forecastUpdatedAt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
+            <div style={{ fontSize: 10, color: '#475569' }}>Click bar for details · Shaded band = confidence range</div>
+          </div>
         </div>
         <div style={{ height: 300 }}>
           <ResponsiveContainer width="100%" height="100%">
@@ -63,10 +72,10 @@ export function DailyTab({ dailyData, selectedDay, setSelectedDay, mainMarket }:
               </defs>
               <CartesianGrid strokeDasharray="2 6" stroke="#1a2744" />
               <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#475569' }} interval={3} angle={-25} textAnchor="end" height={38} />
-              <YAxis domain={[233, 270]} tick={{ fontSize: 10, fill: '#475569' }} width={44} tickFormatter={v => `₹${v}`} />
+              <YAxis domain={['auto', 'auto']} tick={{ fontSize: 10, fill: '#475569' }} width={44} tickFormatter={v => `₹${v}`} />
               <Tooltip content={<DailyTip />} />
-              <ReferenceLine y={270} stroke="#38bdf8" strokeDasharray="4 4" label={{ value: 'Spot ₹270', fill: '#38bdf8', fontSize: 9, position: 'right' }} />
-              <ReferenceLine y={260} stroke="#4ade80" strokeDasharray="3 3" label={{ value: '₹260 target', fill: '#4ade80', fontSize: 9, position: 'right' }} />
+              <ReferenceLine y={spot} stroke="#38bdf8" strokeDasharray="4 4" label={{ value: `Spot ₹${spot}`, fill: '#38bdf8', fontSize: 9, position: 'right' }} />
+              <ReferenceLine y={peakDay.price} stroke="#4ade80" strokeDasharray="3 3" label={{ value: `Peak ₹${peakDay.price}`, fill: '#4ade80', fontSize: 9, position: 'right' }} />
               <Area type="monotone" dataKey="hi" stroke="transparent" fill="url(#dg)" />
               <Area type="monotone" dataKey="lo" stroke="transparent" fill="#080b10" />
               <Line
@@ -119,10 +128,10 @@ export function DailyTab({ dailyData, selectedDay, setSelectedDay, mainMarket }:
           </div>
           <div style={{ marginTop: 12, padding: '10px 12px', background: '#080b10', borderRadius: 8, fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
             {selD?.signal === 'BUY'
-              ? '⬆️ Price forecasted above ₹252 threshold. Tight supply conditions + demand pressure. Consider delaying sale.'
+              ? `⬆️ Price forecasted above ₹${Math.round(spot * 1.007)} (BUY threshold). Tight supply + demand pressure. Consider delaying sale.`
               : selD?.signal === 'SELL'
-              ? '⬇️ Price below ₹242. Seasonal supply pressure. Optimal window to execute sale at premium vs. bear case.'
-              : '↔️ Price in neutral zone ₹242–252. Monitor Thailand weather and China demand signals before acting.'}
+              ? `⬇️ Price below ₹${Math.round(spot * 0.993)} (SELL threshold). Seasonal supply pressure. Optimal window to realise value now.`
+              : `↔️ Price in neutral zone ₹${Math.round(spot * 0.993)}–₹${Math.round(spot * 1.007)}. Monitor Thailand weather and China demand signals before acting.`}
           </div>
         </div>
 
@@ -175,7 +184,7 @@ export function DailyTab({ dailyData, selectedDay, setSelectedDay, mainMarket }:
             </thead>
             <tbody>
               {dailyData.map((d, i) => {
-                const diff = d.price - 245
+                const diff = d.price - spot
                 return (
                   <tr key={i} onClick={() => setSelectedDay(i)}
                     style={{ borderBottom: '1px solid #1a2744', background: selectedDay === i ? '#1a2744' : d.isToday ? '#0d2035' : 'transparent', cursor: 'pointer' }}>

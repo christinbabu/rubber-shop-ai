@@ -5,17 +5,8 @@ import {
   ComposedChart,
 } from 'recharts'
 import { KARNATAKA_MARKETS, KARNATAKA_HISTORY, KARNATAKA_2026 } from '../data'
+import type { KarnatakaLive } from '../types'
 import { S } from '../styles'
-
-const GRADES = [
-  { grade: 'RSS 1X (Premium)', price: 265, color: '#4ade80', pct: 100 },
-  { grade: 'RSS 3',            price: 265, color: '#38bdf8', pct: 100 },
-  { grade: 'RSS 4',            price: 248, color: '#60a5fa', pct: 94  },
-  { grade: 'RSS 5',            price: 241, color: '#c084fc', pct: 91  },
-  { grade: 'Lot / Mixed',      price: 213, color: '#fb923c', pct: 80  },
-  { grade: 'Sheet I (SI)',     price: 149, color: '#f87171', pct: 56  },
-  { grade: 'Sheet II (SII)',   price: 138, color: '#ef4444', pct: 52  },
-]
 
 const DISTRICTS = [
   { name: 'Hassan',           share: 28, area: '28,000 ha', color: '#38bdf8' },
@@ -29,12 +20,48 @@ const DISTRICTS = [
 const INTEL_SECTIONS = [
   { title: 'Why Karnataka trades lower', icon: '📉', color: '#f87171', items: ['Higher transport cost to major tyre plants in Chennai/Pune', 'Quality perception: less established than Kottayam-certified RSS', 'Smaller auction volumes reduce price discovery efficiency', "Some growers sell ungraded 'Lot' rubber, pulling avg down"] },
   { title: 'When the spread narrows',    icon: '🔄', color: '#fb923c', items: ['During peak monsoon — both states disrupted equally', 'When Kottayam supply is tightest — buyers source from Karnataka', 'Post-2022: quality improvement narrowed spread from 12% to 7%', 'Hassan district premium grades now match Kottayam RSS4'] },
-  { title: 'Karnataka 2026 outlook',     icon: '📈', color: '#4ade80', items: ["Ujire live at ₹248/kg (Jun 28); forecast ₹256–262 peak in Aug '26", 'Hassan new plantation areas add 3-4% more supply by 2027', 'EUDR compliance investment improving grade quality & traceability', 'Spread to Kottayam expected to stay 7-9% through 2026-27'] },
+  { title: 'Karnataka 2026 outlook',     icon: '📈', color: '#4ade80', items: ["Ujire live at ₹248/kg (Jul 2026); forecast ₹256–262 peak in Aug '26", 'Hassan new plantation areas add 3-4% more supply by 2027', 'EUDR compliance investment improving grade quality & traceability', 'Spread to Kottayam expected to stay 7-9% through 2026-27'] },
 ]
 
-export function KarnatakaTab() {
+type Props = {
+  karnatakaLive?: KarnatakaLive | null
+  kottayamSpot?: number
+}
+
+export function KarnatakaTab({ karnatakaLive, kottayamSpot = 270 }: Props) {
   const [selKmkt, setSelKmkt] = useState('ujire')
   const km = KARNATAKA_MARKETS.find(m => m.id === selKmkt)
+
+  // Prefer live Canara Post grades, fall back to static data.ts values
+  const liveUjire = karnatakaLive?.ujire
+  const grades = [
+    { grade: 'RSS 1X (Premium)', price: liveUjire?.rss1x ?? 265, color: '#4ade80' },
+    { grade: 'RSS 3',            price: liveUjire?.rss3  ?? 265, color: '#38bdf8' },
+    { grade: 'RSS 4',            price: liveUjire?.rss4  ?? 248, color: '#60a5fa' },
+    { grade: 'RSS 5',            price: liveUjire?.rss5  ?? 241, color: '#c084fc' },
+    { grade: 'Lot / Mixed',      price: liveUjire?.lot   ?? 213, color: '#fb923c' },
+    { grade: 'Sheet I (SI)',     price: liveUjire?.si    ?? 149, color: '#f87171' },
+    { grade: 'Sheet II (SII)',   price: liveUjire?.sii   ?? 138, color: '#ef4444' },
+  ]
+  const maxGradePrice = Math.max(...grades.map(g => g.price))
+
+  // Per-market RSS4 prices: live data when available, else static
+  function marketRss4(id: string): number {
+    if (!karnatakaLive) return km?.rss4 ?? 248
+    return (karnatakaLive as Record<string, {rss4?: number} | unknown>)?.[id] as number
+      ?? karnatakaLive.ujire.rss4
+  }
+  function marketRss1x(id: string): number {
+    if (!karnatakaLive) return liveUjire?.rss1x ?? 265
+    const m = (karnatakaLive as Record<string, {rss1x?: number} | unknown>)?.[id]
+    return (m as {rss1x?: number})?.rss1x ?? karnatakaLive.ujire.rss1x
+  }
+
+  const ujireRss4  = liveUjire?.rss4  ?? 248
+  const ujireRss1x = liveUjire?.rss1x ?? 265
+  const mysuruRss4 = karnatakaLive?.mysuru?.rss4   ?? 251
+  const hassanRss4 = karnatakaLive?.hassan?.rss4   ?? 247
+  const spread     = kottayamSpot - ujireRss4
 
   const spreadData = KARNATAKA_HISTORY[2025].map(d => ({
     m:        d.m,
@@ -50,19 +77,39 @@ export function KarnatakaTab() {
     '2025': KARNATAKA_HISTORY[2025][i].ujire,
   }))
 
+  // Determine selected market's effective price
+  const selRss4 = marketRss4(selKmkt)
+  const selRss3 = km?.rss3 ?? Math.round(selRss4 * 1.069)
+  const selRss5 = km?.rss5 ?? Math.round(selRss4 * 0.972)
+
+  const dataSource = karnatakaLive?.source ?? 'static data'
+  const isLive     = dataSource === 'thecanarapost.com'
+
   return (
     <>
       {/* Header banner */}
       <div style={{ background: 'linear-gradient(135deg,#0d1f10,#0a1c1a)', border: '1px solid #1a4020', borderRadius: 10, padding: '16px 20px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#4ade80', marginBottom: 4 }}>🌿 Karnataka Rubber Market</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#4ade80' }}>🌿 Karnataka Rubber Market</span>
+            {isLive && (
+              <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: '#14532d', color: '#4ade80', fontFamily: 'DM Mono' }}>
+                LIVE · Canara Post
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
             India's 2nd largest rubber producing state · ~1.05 lakh MT/year · Key markets: Ujire, Hassan, Mysuru, Madikeri, Sagara<br />
             Karnataka trades at <span style={{ color: '#4ade80' }}>6–10% discount</span> to Kottayam due to grading and transport differentials
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          {([['Ujire RSS4', '₹248/kg', '#4ade80'], ['Ujire RSS1X', '₹265/kg', '#38bdf8'], ['Mysuru RSS4', '₹251/kg', '#c084fc'], ['Hassan RSS4', '₹247/kg', '#fb923c']] as const).map(([l, v, c]) => (
+          {([
+            ['Ujire RSS4',  `₹${ujireRss4}/kg`,  '#4ade80'],
+            ['Ujire RSS1X', `₹${ujireRss1x}/kg`, '#38bdf8'],
+            ['Mysuru RSS4', `₹${mysuruRss4}/kg`, '#c084fc'],
+            ['Hassan RSS4', `₹${hassanRss4}/kg`, '#fb923c'],
+          ] as const).map(([l, v, c]) => (
             <div key={l} style={{ background: '#080b10', border: `1px solid ${c}33`, borderRadius: 8, padding: '8px 14px', textAlign: 'center' }}>
               <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', marginBottom: 3 }}>{l}</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: c, fontFamily: 'DM Mono' }}>{v}</div>
@@ -92,10 +139,10 @@ export function KarnatakaTab() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             {([
-              ['RSS4 Rate',  `₹${km?.rss4}/kg`,             '#38bdf8'],
-              ['RSS3 Rate',  `₹${km?.rss3}/kg`,             '#4ade80'],
-              ['RSS5 Rate',  `₹${km?.rss5}/kg`,             '#c084fc'],
-              ['vs Kottayam',`-₹${270 - (km?.rss4 ?? 248)}/kg`, '#fb923c'],
+              ['RSS4 Rate',  `₹${selRss4}/kg`,                    '#38bdf8'],
+              ['RSS3 Rate',  `₹${selRss3}/kg`,                    '#4ade80'],
+              ['RSS5 Rate',  `₹${selRss5}/kg`,                    '#c084fc'],
+              ['vs Kottayam',`-₹${kottayamSpot - selRss4}/kg`,    '#fb923c'],
             ] as const).map(([l, v, c]) => (
               <div key={l} style={{ background: '#080b10', borderRadius: 8, padding: '9px 12px' }}>
                 <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', marginBottom: 3 }}>{l}</div>
@@ -109,19 +156,29 @@ export function KarnatakaTab() {
       <div style={S.g2}>
         {/* Grade prices */}
         <div style={S.card}>
-          <div style={S.ct}>Ujire Rubber Society — Grade Prices (₹/kg)</div>
-          <div style={{ fontSize: 11, color: '#475569', marginBottom: 12 }}>Live auction prices · 28 Jun 2026</div>
-          {GRADES.map((g, i) => (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div style={S.ct}>Ujire Rubber Society — Grade Prices (₹/kg)</div>
+          </div>
+          <div style={{ fontSize: 11, color: '#475569', marginBottom: 12 }}>
+            {isLive ? `Live · Canara Post` : 'Derived from Rubber Board RSS4'}
+            {karnatakaLive?.fetchedAt && (
+              <span style={{ marginLeft: 8, color: '#334155', fontFamily: 'DM Mono', fontSize: 10 }}>
+                · {new Date(karnatakaLive.fetchedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+          {grades.map((g, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <div style={{ width: 130, fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{g.grade}</div>
               <div style={{ flex: 1, height: 6, background: '#1a2744', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: `${g.pct}%`, height: '100%', background: g.color, borderRadius: 3 }} />
+                <div style={{ width: `${Math.round((g.price / maxGradePrice) * 100)}%`, height: '100%', background: g.color, borderRadius: 3 }} />
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: g.color, minWidth: 60, textAlign: 'right', fontFamily: 'DM Mono' }}>₹{g.price}</div>
             </div>
           ))}
           <div style={{ marginTop: 12, padding: '10px 12px', background: '#080b10', borderRadius: 8, fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
-            RSS 1X (premium grade) commands ₹22/kg premium over RSS4 at Ujire. The quality spread widens during supply-tight periods.
+            RSS 1X (premium grade) commands ₹{ujireRss1x - ujireRss4}/kg premium over RSS4 at Ujire.
+            Current spread to Kottayam: <span style={{ color: '#fb923c' }}>₹{spread}/kg ({Math.round((spread / kottayamSpot) * 100)}%)</span>
           </div>
         </div>
 

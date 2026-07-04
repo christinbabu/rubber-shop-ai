@@ -6,6 +6,23 @@ export type TabId =
   | 'dashboard'
   | 'predictor'
   | 'analysis'
+  | 'pricehistory'
+
+export interface PriceRecord {
+  date: string
+  kottayam: number
+  kochi: number
+  rss5: number
+  isnr20: number
+  latex60: number
+  ujire: number
+  mysuru: number
+  hassan: number
+  bangkok: number
+  brent: number | null
+  inrUsd: number | null
+  source: string
+}
 
 export type MarketBase = {
   label: string
@@ -148,4 +165,24 @@ export type PredictionResult = {
 export type AiOutputLine = {
   text: string
   type: 'info' | 'data' | 'warning' | 'result' | 'success'
+}
+
+export interface KarnatakaGrades {
+  rss1x: number
+  rss3:  number
+  rss4:  number
+  rss5:  number
+  lot:   number
+  si:    number
+  sii:   number
+}
+
+export interface KarnatakaLive {
+  ujire:    KarnatakaGrades
+  mysuru:   { rss4: number; rss1x: number }
+  hassan:   { rss4: number; rss1x: number }
+  madikeri: { rss4: number; rss1x: number }
+  sagara:   { rss4: number; rss1x: number }
+  source:   string
+  fetchedAt: string
 }
