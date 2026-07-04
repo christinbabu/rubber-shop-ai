@@ -1,0 +1,43 @@
+import express from 'express'
+import cors from 'cors'
+import { connectDb } from './db.js'
+import { scrapeRubberBoard, fetchMacro, scrapeKarnatakaPost, fetchCommoditiesApi } from './services/priceSources.js'
+import authRoutes from './routes/auth.js'
+import userRoutes from './routes/users.js'
+import customerRoutes from './routes/customers.js'
+import productRoutes from './routes/products.js'
+import transactionRoutes from './routes/transactions.js'
+import orderRoutes from './routes/orders.js'
+import priceRoutes from './routes/prices.js'
+import purchaseRateRoutes from './routes/purchaseRates.js'
+
+const app = express()
+const port = process.env.PORT || 4000
+
+app.use(cors())
+app.use(express.json())
+
+app.use('/api', authRoutes)
+app.use('/api', userRoutes)
+app.use('/api', customerRoutes)
+app.use('/api', productRoutes)
+app.use('/api', transactionRoutes)
+app.use('/api', orderRoutes)
+app.use('/api', priceRoutes)
+app.use('/api', purchaseRateRoutes)
+
+connectDb()
+  .then(() => {
+    // Pre-warm all caches on startup
+    scrapeRubberBoard().catch(e => console.warn('Rubber Board pre-warm failed:', e.message))
+    fetchMacro().catch(e => console.warn('Macro pre-warm failed:', e.message))
+    scrapeKarnatakaPost().catch(e => console.warn('Karnataka pre-warm failed:', e.message))
+    fetchCommoditiesApi().catch(e => console.warn('Commodities pre-warm failed:', e.message))
+    app.listen(port, () => {
+      console.log(`Server listening on http://localhost:${port}`)
+    })
+  })
+  .catch((error) => {
+    console.error('Failed to start server:', error)
+    process.exit(1)
+  })

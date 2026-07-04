@@ -15,7 +15,8 @@
       "Bash(npx tsc *)",
       "Bash(python python/verify_sources.py)",
       "Bash(python3 python/verify_sources.py)",
-      "Bash(node --input-type=module --check)"
+      "Bash(node --input-type=module --check)",
+      "Bash(git -C /Users/christinbabu/rubber-shop-ai status --short)"
     ]
   }
 }
