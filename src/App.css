@@ -652,6 +652,7 @@ button {
   padding: 10px 14px;
   font-size: 0.95rem;
   border-radius: 12px;
+  margin-right: 8px;
 }
 
 .button-row {
