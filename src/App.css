@@ -632,6 +632,7 @@ button {
 .button-primary {
   background: var(--accent);
   color: white;
+  margin-bottom: 10px;
 }
 
 .button-primary:hover {

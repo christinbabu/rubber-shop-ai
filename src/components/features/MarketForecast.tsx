@@ -11,7 +11,7 @@ import {
   Tooltip,
   ReferenceLine,
 } from 'recharts'
-import type { Factor } from '../../utils/marketFactors'
+import type { Factor, LiveFactorMeta } from '../../utils/marketFactors'
 import { computePrediction } from '../../utils/marketFactors'
 
 type ForecastPoint = {
@@ -58,11 +58,10 @@ const ForecastTooltip = ({ active, payload, label }: { active?: boolean; payload
 type MarketForecastProps = {
   factors: Factor[]
   setFactors: Dispatch<SetStateAction<Factor[]>>
-  crudeSource: string | null
-  crudeUpdatedAt: Date | null
+  liveFactorMeta: LiveFactorMeta
 }
 
-export function MarketForecast({ factors, setFactors, crudeSource, crudeUpdatedAt }: MarketForecastProps) {
+export function MarketForecast({ factors, setFactors, liveFactorMeta }: MarketForecastProps) {
   const [selectedMonth, setSelectedMonth] = useState<string>(MONTHLY_FORECAST[0].month)
   const result = useMemo(() => computePrediction(factors), [factors])
   const selected = MONTHLY_FORECAST.find((item) => item.month === selectedMonth) ?? MONTHLY_FORECAST[0]
@@ -151,9 +150,9 @@ export function MarketForecast({ factors, setFactors, crudeSource, crudeUpdatedA
                   <span>{factor.icon} {factor.label}</span>
                   <span>{factor.val}{factor.unit}</span>
                 </div>
-                {factor.id === 'crude' && crudeUpdatedAt && (
+                {liveFactorMeta[factor.id] && (
                   <div style={{ fontSize: 10, color: '#4ade80', marginBottom: 4 }}>
-                    ● Live — {crudeSource} · {crudeUpdatedAt.toLocaleTimeString()}
+                    ● Live — {liveFactorMeta[factor.id]!.source} · {liveFactorMeta[factor.id]!.updatedAt.toLocaleTimeString()}
                   </div>
                 )}
                 <input

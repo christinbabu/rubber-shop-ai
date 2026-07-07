@@ -12,7 +12,7 @@ import {
   Line,
   Legend,
 } from 'recharts'
-import type { Factor } from '../../utils/marketFactors'
+import type { Factor, LiveFactorMeta, TyreStock } from '../../utils/marketFactors'
 import { computePrediction } from '../../utils/marketFactors'
 
 const API = 'http://localhost:4000'
@@ -50,9 +50,11 @@ const HistoryTooltip = ({ active, payload, label }: { active?: boolean; payload?
 
 type MarketFactorsProps = {
   factors: Factor[]
+  liveFactorMeta: LiveFactorMeta
+  tyreStocks: TyreStock[]
 }
 
-export function MarketFactors({ factors }: MarketFactorsProps) {
+export function MarketFactors({ factors, liveFactorMeta, tyreStocks }: MarketFactorsProps) {
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [historyError, setHistoryError] = useState<string | null>(null)
 
@@ -86,12 +88,12 @@ export function MarketFactors({ factors }: MarketFactorsProps) {
 
       <div style={{ padding: '1rem', background: '#08111b', border: '1px solid #1a2744', borderRadius: 10, marginBottom: '1rem' }}>
         <h3 style={{ marginBottom: 12 }}>Contribution to predicted price (₹/kg)</h3>
-        <div style={{ width: '100%', height: 260 }}>
+        <div style={{ width: '100%', height: result.contribs.length * 32 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={result.contribs} layout="vertical" margin={{ left: 20 }}>
               <CartesianGrid strokeDasharray="2 5" stroke="#1a2744" horizontal={false} />
               <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-              <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={110} />
+              <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} width={110} interval={0} />
               <Tooltip content={<ContribTooltip />} />
               <Bar dataKey="val" radius={[0, 6, 6, 0]}>
                 {result.contribs.map((c) => (
@@ -115,9 +117,42 @@ export function MarketFactors({ factors }: MarketFactorsProps) {
                   {contrib.val >= 0 ? '+' : ''}₹{contrib.val}/kg
                 </div>
               )}
+              {liveFactorMeta[factor.id] ? (
+                <div style={{ fontSize: '0.65rem', marginTop: 6, color: '#4ade80' }}>
+                  ● Live · {liveFactorMeta[factor.id]!.updatedAt.toLocaleTimeString()}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.65rem', marginTop: 6, color: '#64748b' }}>Manual estimate</div>
+              )}
             </div>
           )
         })}
+      </div>
+
+      <div style={{ padding: '1rem', background: '#08111b', border: '1px solid #1a2744', borderRadius: 10, marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3>Tyre company share prices (live)</h3>
+          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>NSE · drives the Tire industry demand factor</div>
+        </div>
+        {tyreStocks.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Loading live quotes…</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
+            {tyreStocks.map((stock) => (
+              <div key={stock.symbol} style={{ background: '#0b1621', border: '1px solid #1a2744', borderRadius: 10, padding: '0.85rem' }}>
+                <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 4 }}>{stock.name}</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f0f9ff' }}>
+                  {stock.price != null ? `₹${stock.price.toLocaleString('en-IN')}` : '—'}
+                </div>
+                {stock.changePct != null && (
+                  <div style={{ fontSize: '0.75rem', marginTop: 4, color: stock.changePct >= 0 ? '#4ade80' : '#f87171' }}>
+                    {stock.changePct >= 0 ? '+' : ''}{stock.changePct}%
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: '1rem', background: '#08111b', border: '1px solid #1a2744', borderRadius: 10 }}>

@@ -8,6 +8,8 @@ import {
   fetchCommoditiesApi,
   savePriceSnapshot,
 } from '../services/priceSources.js'
+import { fetchTyreStocks } from '../services/tyreStocks.js'
+import { fetchProducerFx } from '../services/producerFx.js'
 
 const router = Router()
 
@@ -165,6 +167,28 @@ router.get('/live-data', async (req, res) => {
       },
     })
   } catch (err) {
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Live tyre-maker share prices (proxy for tire industry demand) ───────────
+router.get('/tyre-stocks', async (req, res) => {
+  try {
+    const data = await fetchTyreStocks()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('tyre-stocks error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Live producer-country FX basket (THB/IDR/VND vs USD) ───────────────────
+router.get('/producer-fx', async (req, res) => {
+  try {
+    const data = await fetchProducerFx()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('producer-fx error:', err.message)
     res.status(503).json({ success: false, error: err.message })
   }
 })

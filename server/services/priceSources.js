@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio'
 import { getDb } from '../db.js'
+import { fetchYahooQuote } from './yahoo.js'
 
 // ─── In-memory price cache (avoids hammering external sites) ─────────────────
 export const cache = {
@@ -63,15 +64,8 @@ export async function scrapeRubberBoard() {
 }
 
 async function fetchYahooPrice(ticker) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=5d`
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
-    signal: AbortSignal.timeout(8000),
-  })
-  const json = await resp.json()
-  const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []
-  const last = [...closes].reverse().find(v => v != null)
-  return last ? Math.round(last * 100) / 100 : null
+  const quote = await fetchYahooQuote(ticker)
+  return quote?.price ?? null
 }
 
 // Brent crude spot price, scraped from the TradingEconomics commodity page.

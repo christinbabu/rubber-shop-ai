@@ -5,7 +5,7 @@ import type { CartItem, Customer, Product, Role, Transaction } from './types'
 import { createId, todayString } from './utils/helpers'
 import { clearAuthSession, readAuthSession, saveAuthSession, AUTH_SESSION_TTL_MS } from './utils/authSession'
 import { mapCustomer } from './utils/customerMapper'
-import type { Factor } from './utils/marketFactors'
+import type { Factor, LiveFactorMeta, TyreStock } from './utils/marketFactors'
 import { FACTORS } from './utils/marketFactors'
 
 // Layout Components
@@ -62,8 +62,8 @@ function App() {
 
   // Market factor model state (shared by Market Forecast + Market Factors screens)
   const [factors, setFactors] = useState<Factor[]>(FACTORS)
-  const [crudeSource, setCrudeSource] = useState<string | null>(null)
-  const [crudeUpdatedAt, setCrudeUpdatedAt] = useState<Date | null>(null)
+  const [liveFactorMeta, setLiveFactorMeta] = useState<LiveFactorMeta>({})
+  const [tyreStocks, setTyreStocks] = useState<TyreStock[]>([])
   const [spotPrice, setSpotPrice] = useState<number | null>(null)
   const [spotUpdatedAt, setSpotUpdatedAt] = useState<Date | null>(null)
 
@@ -71,26 +71,52 @@ function App() {
     let cancelled = false
 
     async function fetchLiveMacro() {
-      try {
-        const resp = await fetch('/api/live-data')
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-        const json = await resp.json()
-        if (!json.success || cancelled) return
+      const now = new Date()
+      const [liveResult, tyreResult, fxResult] = await Promise.allSettled([
+        fetch('/api/live-data').then((r) => r.json()),
+        fetch('/api/tyre-stocks').then((r) => r.json()),
+        fetch('/api/producer-fx').then((r) => r.json()),
+      ])
+      if (cancelled) return
+
+      const meta: LiveFactorMeta = {}
+
+      if (liveResult.status === 'fulfilled' && liveResult.value.success) {
+        const json = liveResult.value
         if (json.macro) {
           setFactors((current) => current.map((item) => {
             if (item.id === 'crude')  return { ...item, val: Math.round(json.macro.brent  * 100) / 100 }
             if (item.id === 'inr')    return { ...item, val: Math.round(json.macro.inrUsd * 100) / 100 }
             return item
           }))
-          setCrudeSource(json.macro.source ?? 'live')
-          setCrudeUpdatedAt(new Date())
+          meta.crude = { source: json.macro.source ?? 'live', updatedAt: now }
+          meta.inr   = { source: json.macro.source ?? 'live', updatedAt: now }
         }
         if (json.prices?.kottayam) {
           setSpotPrice(json.prices.kottayam)
-          setSpotUpdatedAt(new Date())
+          setSpotUpdatedAt(now)
         }
-      } catch {
-        // keep last known factor values on fetch failure
+      }
+
+      if (tyreResult.status === 'fulfilled' && tyreResult.value.success) {
+        const json = tyreResult.value
+        setFactors((current) => current.map((item) =>
+          item.id === 'tireDemand' ? { ...item, val: json.tireDemandIndex } : item,
+        ))
+        setTyreStocks(json.stocks)
+        meta.tireDemand = { source: json.source, updatedAt: now }
+      }
+
+      if (fxResult.status === 'fulfilled' && fxResult.value.success) {
+        const json = fxResult.value
+        setFactors((current) => current.map((item) =>
+          item.id === 'producerFx' ? { ...item, val: json.strengthIndex } : item,
+        ))
+        meta.producerFx = { source: json.source, updatedAt: now }
+      }
+
+      if (Object.keys(meta).length) {
+        setLiveFactorMeta((current) => ({ ...current, ...meta }))
       }
     }
 
@@ -700,11 +726,12 @@ function App() {
             <MarketForecast
               factors={factors}
               setFactors={setFactors}
-              crudeSource={crudeSource}
-              crudeUpdatedAt={crudeUpdatedAt}
+              liveFactorMeta={liveFactorMeta}
             />
           )}
-          {activeTab === 'marketfactors' && <MarketFactors factors={factors} />}
+          {activeTab === 'marketfactors' && (
+            <MarketFactors factors={factors} liveFactorMeta={liveFactorMeta} tyreStocks={tyreStocks} />
+          )}
           {activeTab === 'pricepredictor' && (
             <PricePredictor factors={factors} spotPrice={spotPrice} spotUpdatedAt={spotUpdatedAt} />
           )}

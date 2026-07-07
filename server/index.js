@@ -2,6 +2,8 @@ import express from 'express'
 import cors from 'cors'
 import { connectDb } from './db.js'
 import { scrapeRubberBoard, fetchMacro, scrapeKarnatakaPost, fetchCommoditiesApi } from './services/priceSources.js'
+import { fetchTyreStocks } from './services/tyreStocks.js'
+import { fetchProducerFx } from './services/producerFx.js'
 import authRoutes from './routes/auth.js'
 import userRoutes from './routes/users.js'
 import customerRoutes from './routes/customers.js'
@@ -33,6 +35,8 @@ connectDb()
     fetchMacro().catch(e => console.warn('Macro pre-warm failed:', e.message))
     scrapeKarnatakaPost().catch(e => console.warn('Karnataka pre-warm failed:', e.message))
     fetchCommoditiesApi().catch(e => console.warn('Commodities pre-warm failed:', e.message))
+    fetchTyreStocks().catch(e => console.warn('Tyre stocks pre-warm failed:', e.message))
+    fetchProducerFx().catch(e => console.warn('Producer FX pre-warm failed:', e.message))
     app.listen(port, () => {
       console.log(`Server listening on http://localhost:${port}`)
     })

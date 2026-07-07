@@ -241,18 +241,26 @@ export function PricePredictor({ factors, spotPrice, spotUpdatedAt }: PricePredi
         <h3 style={{ marginBottom: 10 }}>How rubber price is determined</h3>
         <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.8 }}>
           <p style={{ marginBottom: 8 }}>
-            The Kottayam RSS4 benchmark — the price Kerala/Karnataka farmers are paid and dealers quote off — moves with six real forces:
+            The Kottayam RSS4 benchmark — the price Kerala/Karnataka farmers are paid and dealers quote off — moves with 15 real forces:
           </p>
           <ul style={{ paddingLeft: 18, marginBottom: 8, display: 'grid', gap: 6 }}>
-            <li><strong style={{ color: '#f0f9ff' }}>Monsoon seasonality</strong> — SW monsoon (Jun–Sep) halts tapping in Kerala/Karnataka; supply tightens and prices historically firm, peaking around August. Tapping resumes and supply recovers Oct–Dec, easing prices into year-end.</li>
-            <li><strong style={{ color: '#f0f9ff' }}>China demand</strong> — China consumes the largest share of world natural rubber (tyres for its auto/truck fleet). Stronger Chinese tyre production pulls more rubber out of the market.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Tire industry demand</strong> — tires consume roughly 70% of world natural rubber; manufacturer restocking/destocking cycles are the single biggest demand swing factor.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>China demand</strong> — China consumes the largest share of world natural rubber. Stronger Chinese industrial and tyre output pulls more rubber out of the market.</li>
             <li><strong style={{ color: '#f0f9ff' }}>India's supply deficit</strong> — India consumes far more rubber than it produces; the wider that gap, the more the domestic price depends on costlier imports.</li>
-            <li><strong style={{ color: '#f0f9ff' }}>Brent crude oil</strong> — synthetic rubber (SBR) is made from crude derivatives. Expensive crude makes synthetic rubber costlier, pushing tyre makers toward natural rubber and supporting its price.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Monsoon seasonality</strong> — SW monsoon (Jun–Sep) halts tapping in Kerala/Karnataka; supply tightens and prices historically firm, peaking around August. Tapping resumes and supply recovers Oct–Dec, easing prices into year-end.</li>
             <li><strong style={{ color: '#f0f9ff' }}>SE Asia supply</strong> — Thailand, Indonesia and Malaysia produce most of the world's natural rubber; weather or output disruptions there move the international (Bangkok) benchmark that Kottayam tracks.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Exchange stock scarcity</strong> — SICOM/SHFE warehouse inventory drawdowns signal tightness before it shows up in spot price.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Synthetic rubber (SBR) price</strong> — natural and synthetic rubber are substitutes; expensive SBR (crude-derived) pushes tyre makers toward natural rubber.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Brent crude oil</strong> — a direct input cost for synthetic rubber and shipping fuel.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Export policy tightness</strong> — Thailand/Indonesia/Vietnam's ITRC bloc controls ~65% of world supply; export quotas or tariffs there tighten global availability.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Producer currency strength</strong> — a stronger Thai baht/Indonesian rupiah/Vietnamese dong makes SE Asian exports costlier, supporting the global price.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Labor / tapping disruption</strong> — strikes, leaf disease outbreaks, or tree-replanting cycles beyond the monsoon reduce output.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Global auto sales & EV mix</strong> — overall vehicle production volume drives aggregate tire demand.</li>
             <li><strong style={{ color: '#f0f9ff' }}>INR/USD rate</strong> and <strong style={{ color: '#f0f9ff' }}>shipping cost</strong> — a weaker rupee or costlier freight makes imported rubber pricier in INR terms, supporting the domestic price.</li>
+            <li><strong style={{ color: '#f0f9ff' }}>Futures speculative positioning</strong> — net-long positioning on TOCOM/SHFE rubber futures can move spot prices independent of physical fundamentals.</li>
           </ul>
           <p>
-            This screen's daily forecast = today's real spot price, adjusted by the seasonal monsoon curve for the selected date and the current weighted pull of the five non-seasonal factors below (also shown live on the Market Factors screen).
+            This screen's daily forecast = today's real spot price, adjusted by the seasonal monsoon curve for the selected date and the current weighted pull of the 14 non-seasonal factors below (also shown live on the Market Factors screen).
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 12 }}>
