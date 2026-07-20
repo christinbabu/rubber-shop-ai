@@ -1,4 +1,5 @@
 import { fetchYahooQuote } from './yahoo.js'
+import { fmtPct, direction } from './factorReason.js'
 
 export const TYRE_STOCKS = [
   { symbol: 'MRF.NS', name: 'MRF' },
@@ -39,10 +40,13 @@ export async function fetchTyreStocks() {
   // "Tire industry demand" factor around its neutral midpoint (5.5).
   const tireDemandIndex = Math.max(1, Math.min(10, Math.round((5.5 + avgChangePct * 0.5) * 10) / 10))
 
+  const reason = `${stocks.map((s) => `${s.name} ${s.changePct != null ? fmtPct(s.changePct) : 'n/a'}`).join(', ')} → tire demand outlook ${direction(avgChangePct, { up: 'improving', down: 'cooling', flat: 'flat' })}`
+
   const result = {
     stocks,
     avgChangePct,
     tireDemandIndex,
+    reason,
     fetchedAt: new Date().toISOString(),
     source: 'Yahoo Finance (NSE)',
   }

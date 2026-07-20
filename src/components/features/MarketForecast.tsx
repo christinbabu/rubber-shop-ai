@@ -29,6 +29,12 @@ type ForecastPoint = {
   supply: string
 }
 
+// Seasonal template: month-to-month shape (monsoon squeeze, post-harvest easing,
+// etc.) calibrated against an anchor spot price. The live chart below re-anchors
+// this shape to today's model output instead of rendering these fixed numbers,
+// so the forecast actually moves when the factor sliders / live feeds move.
+const FORECAST_ANCHOR_PRED = 248
+
 const MONTHLY_FORECAST: ForecastPoint[] = [
   { month: "Jun '26", pred: 248, lo: 232, hi: 264, bull: 268, bear: 228, season: 'Pre-monsoon', momentum: 'bullish', confidence: 72, catalyst: 'Tapping constraints pre-monsoon. China pre-quarter stockpiling.', risk: 'Ivory Coast peak harvest adds supply.', supply: 'Tight' },
   { month: "Jul '26", pred: 255, lo: 237, hi: 273, bull: 278, bear: 232, season: 'SW Monsoon Peak', momentum: 'bullish', confidence: 78, catalyst: 'Southwest monsoon disrupts Kerala tapping. Production falls 25-30%.', risk: 'SE Asia normal season. China slowdown risk.', supply: 'Very Tight' },
@@ -64,7 +70,27 @@ type MarketForecastProps = {
 export function MarketForecast({ factors, setFactors, liveFactorMeta }: MarketForecastProps) {
   const [selectedMonth, setSelectedMonth] = useState<string>(MONTHLY_FORECAST[0].month)
   const result = useMemo(() => computePrediction(factors), [factors])
-  const selected = MONTHLY_FORECAST.find((item) => item.month === selectedMonth) ?? MONTHLY_FORECAST[0]
+
+  // Re-anchor the seasonal monthly shape to today's live model output, fading
+  // the live delta out over the year (same technique as predictor/utils.ts's
+  // buildMonthlyForecast) so the chart tracks the sliders instead of sitting static.
+  const liveForecast = useMemo(() => {
+    const delta = result.pred - FORECAST_ANCHOR_PRED
+    return MONTHLY_FORECAST.map((m, i) => {
+      const weight = Math.max(0, 1 - i * 0.07)
+      const adj = Math.round(delta * weight)
+      return {
+        ...m,
+        pred: Math.max(90, m.pred + adj),
+        lo: Math.max(80, m.lo + adj),
+        hi: Math.max(100, m.hi + adj),
+        bull: Math.max(100, m.bull + adj),
+        bear: Math.max(90, m.bear + adj),
+      }
+    })
+  }, [result.pred])
+
+  const selected = liveForecast.find((item) => item.month === selectedMonth) ?? liveForecast[0]
 
   return (
     <div className="card">
@@ -119,7 +145,7 @@ export function MarketForecast({ factors, setFactors, liveFactorMeta }: MarketFo
           </div>
           <div style={{ width: '100%', height: 260 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={MONTHLY_FORECAST}>
+              <ComposedChart data={liveForecast}>
                 <defs>
                   <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.2} />
@@ -130,7 +156,7 @@ export function MarketForecast({ factors, setFactors, liveFactorMeta }: MarketFo
                 <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 11 }} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(value) => `₹${value}`} width={52} />
                 <Tooltip content={<ForecastTooltip />} />
-                <ReferenceLine y={245} stroke="#38bdf8" strokeDasharray="4 4" />
+                <ReferenceLine y={result.pred} stroke="#38bdf8" strokeDasharray="4 4" label={{ value: 'Live model', fill: '#38bdf8', fontSize: 10, position: 'insideTopLeft' }} />
                 <Area type="monotone" dataKey="hi" stroke="transparent" fill="url(#forecastGrad)" />
                 <Area type="monotone" dataKey="lo" stroke="transparent" fill="#080b10" />
                 <Line type="monotone" dataKey="pred" stroke="#38bdf8" strokeWidth={2.5} dot={{ r: 4, fill: '#38bdf8' }} />
@@ -153,6 +179,11 @@ export function MarketForecast({ factors, setFactors, liveFactorMeta }: MarketFo
                 {liveFactorMeta[factor.id] && (
                   <div style={{ fontSize: 10, color: '#4ade80', marginBottom: 4 }}>
                     ● Live — {liveFactorMeta[factor.id]!.source} · {liveFactorMeta[factor.id]!.updatedAt.toLocaleTimeString()}
+                  </div>
+                )}
+                {liveFactorMeta[factor.id]?.reason && (
+                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4, lineHeight: 1.4 }}>
+                    {liveFactorMeta[factor.id]!.reason}
                   </div>
                 )}
                 <input
@@ -183,7 +214,7 @@ export function MarketForecast({ factors, setFactors, liveFactorMeta }: MarketFo
                 onChange={(event) => setSelectedMonth(event.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: 10, border: '1px solid #1a2744', background: '#0b1621', color: '#e2e8f0' }}
               >
-                {MONTHLY_FORECAST.map((item) => (
+                {liveForecast.map((item) => (
                   <option key={item.month} value={item.month}>{item.month}</option>
                 ))}
               </select>

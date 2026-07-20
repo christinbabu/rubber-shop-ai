@@ -1,4 +1,5 @@
 import { fetchYahooQuote } from './yahoo.js'
+import { fmtPct, direction } from './factorReason.js'
 
 export const PRODUCER_CURRENCIES = [
   { symbol: 'THB=X', name: 'Thai baht' },
@@ -35,10 +36,14 @@ export async function fetchProducerFx() {
 
   const strengthIndex = Math.max(1, Math.min(10, Math.round((5.5 + avgAppreciationPct * 0.8) * 10) / 10))
 
+  // Same sign inversion as avgAppreciationPct above, applied per-currency for the explanation.
+  const reason = `${currencies.map((c) => `${c.name} ${c.changePct != null ? fmtPct(-c.changePct) : 'n/a'}`).join(', ')} → producer FX outlook ${direction(avgAppreciationPct, { up: 'strengthening (costlier SE Asia exports)', down: 'weakening (cheaper SE Asia exports)', flat: 'flat' })}`
+
   const result = {
     currencies,
     avgAppreciationPct,
     strengthIndex,
+    reason,
     fetchedAt: new Date().toISOString(),
     source: 'Yahoo Finance',
   }

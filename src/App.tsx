@@ -64,6 +64,7 @@ function App() {
   const [factors, setFactors] = useState<Factor[]>(FACTORS)
   const [liveFactorMeta, setLiveFactorMeta] = useState<LiveFactorMeta>({})
   const [tyreStocks, setTyreStocks] = useState<TyreStock[]>([])
+  const [autoStocks, setAutoStocks] = useState<TyreStock[]>([])
   const [spotPrice, setSpotPrice] = useState<number | null>(null)
   const [spotUpdatedAt, setSpotUpdatedAt] = useState<Date | null>(null)
 
@@ -72,11 +73,17 @@ function App() {
 
     async function fetchLiveMacro() {
       const now = new Date()
-      const [liveResult, tyreResult, fxResult] = await Promise.allSettled([
-        fetch('/api/live-data').then((r) => r.json()),
-        fetch('/api/tyre-stocks').then((r) => r.json()),
-        fetch('/api/producer-fx').then((r) => r.json()),
-      ])
+      const [liveResult, tyreResult, fxResult, chinaResult, autoResult, shippingResult, domesticResult, tokyoResult] =
+        await Promise.allSettled([
+          fetch('/api/live-data').then((r) => r.json()),
+          fetch('/api/tyre-stocks').then((r) => r.json()),
+          fetch('/api/producer-fx').then((r) => r.json()),
+          fetch('/api/china-demand').then((r) => r.json()),
+          fetch('/api/auto-stocks').then((r) => r.json()),
+          fetch('/api/shipping-index').then((r) => r.json()),
+          fetch('/api/domestic-signals').then((r) => r.json()),
+          fetch('/api/tokyo-market').then((r) => r.json()),
+        ])
       if (cancelled) return
 
       const meta: LiveFactorMeta = {}
@@ -104,7 +111,7 @@ function App() {
           item.id === 'tireDemand' ? { ...item, val: json.tireDemandIndex } : item,
         ))
         setTyreStocks(json.stocks)
-        meta.tireDemand = { source: json.source, updatedAt: now }
+        meta.tireDemand = { source: json.source, updatedAt: now, reason: json.reason }
       }
 
       if (fxResult.status === 'fulfilled' && fxResult.value.success) {
@@ -112,7 +119,51 @@ function App() {
         setFactors((current) => current.map((item) =>
           item.id === 'producerFx' ? { ...item, val: json.strengthIndex } : item,
         ))
-        meta.producerFx = { source: json.source, updatedAt: now }
+        meta.producerFx = { source: json.source, updatedAt: now, reason: json.reason }
+      }
+
+      if (chinaResult.status === 'fulfilled' && chinaResult.value.success) {
+        const json = chinaResult.value
+        setFactors((current) => current.map((item) =>
+          item.id === 'china' ? { ...item, val: json.demandIndex } : item,
+        ))
+        meta.china = { source: json.source, updatedAt: now, reason: json.reason }
+      }
+
+      if (autoResult.status === 'fulfilled' && autoResult.value.success) {
+        const json = autoResult.value
+        setFactors((current) => current.map((item) =>
+          item.id === 'autoSales' ? { ...item, val: json.autoSalesIndex } : item,
+        ))
+        setAutoStocks(json.stocks)
+        meta.autoSales = { source: json.source, updatedAt: now, reason: json.reason }
+      }
+
+      if (shippingResult.status === 'fulfilled' && shippingResult.value.success) {
+        const json = shippingResult.value
+        setFactors((current) => current.map((item) =>
+          item.id === 'shipping' ? { ...item, val: json.shippingIndex } : item,
+        ))
+        meta.shipping = { source: json.source, updatedAt: now, reason: json.reason }
+      }
+
+      if (domesticResult.status === 'fulfilled' && domesticResult.value.success) {
+        const json = domesticResult.value
+        setFactors((current) => current.map((item) => {
+          if (item.id === 'deficit') return { ...item, val: json.deficitIndex }
+          if (item.id === 'seasia')  return { ...item, val: json.seasiaIndex }
+          return item
+        }))
+        meta.deficit = { source: json.source, updatedAt: now, reason: json.deficitReason }
+        meta.seasia  = { source: json.source, updatedAt: now, reason: json.seasiaReason }
+      }
+
+      if (tokyoResult.status === 'fulfilled' && tokyoResult.value.success) {
+        const json = tokyoResult.value
+        setFactors((current) => current.map((item) =>
+          item.id === 'tokyo' ? { ...item, val: json.tokyoIndex } : item,
+        ))
+        meta.tokyo = { source: json.source, updatedAt: now, reason: json.reason }
       }
 
       if (Object.keys(meta).length) {
@@ -730,7 +781,7 @@ function App() {
             />
           )}
           {activeTab === 'marketfactors' && (
-            <MarketFactors factors={factors} liveFactorMeta={liveFactorMeta} tyreStocks={tyreStocks} />
+            <MarketFactors factors={factors} liveFactorMeta={liveFactorMeta} tyreStocks={tyreStocks} autoStocks={autoStocks} />
           )}
           {activeTab === 'pricepredictor' && (
             <PricePredictor factors={factors} spotPrice={spotPrice} spotUpdatedAt={spotUpdatedAt} />

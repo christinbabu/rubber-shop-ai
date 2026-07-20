@@ -10,6 +10,12 @@ import {
 } from '../services/priceSources.js'
 import { fetchTyreStocks } from '../services/tyreStocks.js'
 import { fetchProducerFx } from '../services/producerFx.js'
+import { fetchChinaDemand } from '../services/chinaDemand.js'
+import { fetchTokyoMarket } from '../services/tokyoMarket.js'
+import { fetchAutoStocks } from '../services/autoStocks.js'
+import { fetchShippingIndex } from '../services/shipping.js'
+import { fetchDomesticSignals } from '../services/domesticSignals.js'
+import { getFactorHistory } from '../services/factorHistory.js'
 
 const router = Router()
 
@@ -193,6 +199,61 @@ router.get('/producer-fx', async (req, res) => {
   }
 })
 
+// ─── Live China demand proxy (CNY/USD + Shanghai Composite) ──────────────────
+router.get('/china-demand', async (req, res) => {
+  try {
+    const data = await fetchChinaDemand()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('china-demand error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Live Tokyo (OSE) rubber market proxy (JPY/USD + Nikkei 225) ────────────
+router.get('/tokyo-market', async (req, res) => {
+  try {
+    const data = await fetchTokyoMarket()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('tokyo-market error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Live auto-maker share prices (proxy for auto sales & EV mix) ────────────
+router.get('/auto-stocks', async (req, res) => {
+  try {
+    const data = await fetchAutoStocks()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('auto-stocks error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Live shipping/freight proxy (BDRY — Baltic Dry Index futures ETF) ───────
+router.get('/shipping-index', async (req, res) => {
+  try {
+    const data = await fetchShippingIndex()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('shipping-index error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Derived India deficit & SE Asia supply signals (from scraped prices) ────
+router.get('/domestic-signals', async (req, res) => {
+  try {
+    const data = await fetchDomesticSignals()
+    res.json({ success: true, ...data })
+  } catch (err) {
+    console.error('domestic-signals error:', err.message)
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
 // ─── Price History endpoint ───────────────────────────────────────────────────
 router.get('/price-history', async (req, res) => {
   try {
@@ -223,6 +284,33 @@ router.get('/price-history', async (req, res) => {
         brent:    r.brent,
         inrUsd:   r.inrUsd,
         source:   r.source,
+      })),
+    })
+  } catch (err) {
+    res.status(503).json({ success: false, error: err.message })
+  }
+})
+
+// ─── Live factor history endpoint (one time series per live-derived factor) ──
+router.get('/factor-history', async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.query.days) || 30, 365)
+    const records = await getFactorHistory(days)
+    res.json({
+      success: true,
+      count: records.length,
+      days,
+      records: records.map(r => ({
+        date:       r.fetchedAt,
+        tireDemand: r.tireDemand ?? null,
+        china:      r.china ?? null,
+        deficit:    r.deficit ?? null,
+        seasia:     r.seasia ?? null,
+        producerFx: r.producerFx ?? null,
+        autoSales:  r.autoSales ?? null,
+        shipping:   r.shipping ?? null,
+        crude:      r.crude ?? null,
+        inr:        r.inr ?? null,
       })),
     })
   } catch (err) {
